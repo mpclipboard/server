@@ -27,22 +27,22 @@ impl Config {
             port: 3000,
             token: Uuid::new_v4().to_string(),
         };
-        let toml = toml::to_string(&config)?;
-        println!("{}", toml);
+        let json = serde_json::to_string_pretty(&config)?;
+        println!("{}", json);
         Ok(())
     }
 
     pub async fn read() -> Result<Self> {
         let path = if cfg!(debug_assertions) {
-            "config.toml"
+            "config.json"
         } else {
-            "/etc/shared-clipboard-server/config.toml"
+            "/etc/shared-clipboard-server/config.json"
         };
 
         let content = tokio::fs::read_to_string(path)
             .await
             .with_context(|| format!("failed to read {path}"))?;
-        let config: Self = toml::from_str(&content)?;
+        let config: Self = serde_json::from_str(&content)?;
         Ok(config)
     }
 }

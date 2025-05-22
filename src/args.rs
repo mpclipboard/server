@@ -17,7 +17,7 @@ Options:
 "#;
 
     pub(crate) fn parse() -> Result<Self> {
-        let command = std::env::args().skip(1).next();
+        let command = std::env::args().nth(1);
 
         match command.as_deref() {
             Some("--generate") => Ok(Self::Generate),

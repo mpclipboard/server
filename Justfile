@@ -4,5 +4,5 @@ server:
 generate-config:
     RUST_LOG=trace cargo run --bin shared-clipboard-server -- --generate
 
-client:
-    RUST_LOG=trace cargo run --bin client
+client name:
+    RUST_LOG=trace cargo run --bin client -- {{name}}

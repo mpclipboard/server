@@ -1,10 +1,15 @@
 use anyhow::Result;
 use args::Args;
+use clip::Clip;
 use config::Config;
 
 mod args;
+mod clip;
 mod config;
+mod payload;
+mod select_all_identified;
 mod server;
+mod ws_wrapper;
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -1,0 +1,5 @@
+{
+    "hostname": "localhost",
+    "port": 3000,
+    "token": "test-token-one-to-three"
+}
