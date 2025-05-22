@@ -1,5 +1,5 @@
 use crate::{Config, map_of_streams::MapOfStreams, store::Store};
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use common::{AuthRequest, AuthResponse, Clip};
 use futures_util::{SinkExt as _, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -32,23 +32,21 @@ pub(crate) async fn start() -> Result<()> {
                 match authenticate(message, &config.token) {
                     Ok(name) => {
                         log::info!("[auth] OK {:?}", name);
-                        auth_response(&mut ws, true).await;
+                        send_message(&mut ws, AuthResponse::new(true)).await;
                         if let Some(clip) = store.current() {
-                            if let Err(err) = ws.send(Message::from(clip)).await {
-                                log::error!("[auth] failed to send initial clip: {err:?}");
-                            }
+                            send_message(&mut ws, Message::from(clip)).await;
                         }
                         authenticated.insert(name, ws);
                     }
                     Err(err) => {
                         log::error!("[auth] ERROR {err:?}");
-                        auth_response(&mut ws, false).await;
+                        send_message(&mut ws, AuthResponse::new(false)).await;
                     }
                 }
             }
 
             Some((id, message)) = authenticated.next() => {
-                match clip(message) {
+                match Clip::try_from(message) {
                     Ok(clip) => {
                         log::info!("[{id}] got clip {:?} at {}", clip.text, clip.timestamp);
                         if store.add(clip.clone()) {
@@ -67,8 +65,7 @@ pub(crate) async fn start() -> Result<()> {
     }
 }
 
-fn authenticate(message: Result<Message, tokio_websockets::Error>, token: &str) -> Result<String> {
-    let message = message.context("malformed message")?;
+fn authenticate(message: Message, token: &str) -> Result<String> {
     let auth = AuthRequest::try_from(message)?;
 
     if auth.token == token {
@@ -78,14 +75,8 @@ fn authenticate(message: Result<Message, tokio_websockets::Error>, token: &str) 
     }
 }
 
-async fn auth_response(ws: &mut WebSocketStream<TcpStream>, success: bool) {
-    if let Err(err) = ws.send(Message::from(AuthResponse::new(success))).await {
-        log::error!("[auth] failed to send ACK back: {err:?}");
+async fn send_message(ws: &mut WebSocketStream<TcpStream>, message: impl Into<Message>) {
+    if let Err(err) = ws.send(message.into()).await {
+        log::error!("[auth] failed to send message: {err:?}");
     }
-}
-
-fn clip(message: Result<Message, tokio_websockets::Error>) -> Result<Clip> {
-    let message = message.context("malformed message")?;
-    let clip = Clip::try_from(message)?;
-    Ok(clip)
 }

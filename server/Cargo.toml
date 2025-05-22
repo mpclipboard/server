@@ -14,4 +14,3 @@ serde_json = { workspace = true }
 futures-util = { workspace = true }
 uuid = { workspace = true }
 log = { workspace = true }
-pin-project-lite = { workspace = true }

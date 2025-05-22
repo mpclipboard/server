@@ -6,6 +6,7 @@ mod args;
 mod map_of_streams;
 mod server;
 mod store;
+mod stream_id;
 
 #[tokio::main]
 async fn main() -> Result<()> {

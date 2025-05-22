@@ -1,3 +1,4 @@
+use crate::stream_id::StreamId;
 use common::Clip;
 use futures_util::{SinkExt, Stream};
 use std::{collections::HashMap, pin::Pin, task::Poll};
@@ -7,22 +8,7 @@ use tokio_websockets::{Message, WebSocketStream};
 type Ws = WebSocketStream<TcpStream>;
 
 pub(crate) struct MapOfStreams {
-    map: HashMap<StreamId, Pin<Box<Ws>>>,
-}
-
-#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct StreamId(String);
-
-impl std::fmt::Debug for StreamId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.0)
-    }
-}
-
-impl std::fmt::Display for StreamId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
+    map: HashMap<StreamId, Ws>,
 }
 
 impl MapOfStreams {
@@ -33,12 +19,11 @@ impl MapOfStreams {
     }
 
     pub(crate) fn insert(&mut self, uuid: impl Into<String>, stream: Ws) {
-        self.map.insert(StreamId(uuid.into()), Box::pin(stream));
+        self.map.insert(StreamId(uuid.into()), stream);
     }
 
     pub(crate) fn remove(&mut self, stream_id: &StreamId) -> Ws {
-        let value = self.map.remove(stream_id).expect("stream_id must be valid");
-        *Pin::into_inner(value)
+        self.map.remove(stream_id).expect("stream_id must be valid")
     }
 
     pub(crate) async fn broadcast(&mut self, clip: Clip) {
@@ -51,30 +36,38 @@ impl MapOfStreams {
 }
 
 impl Stream for MapOfStreams {
-    type Item = (StreamId, Result<Message, tokio_websockets::Error>);
+    type Item = (StreamId, Message);
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
-        let mut disconnected = vec![];
+        let mut ids_to_drop = vec![];
+
         let mut out: Poll<Option<Self::Item>> = Poll::Pending;
 
-        for (stream_id, stream) in self.map.iter_mut() {
-            let stream = stream.as_mut();
+        for (id, stream) in self.map.iter_mut() {
+            // SAFETY:
+            // we hold a mutable reference to `self` and `self.map`, so `stream` taken out of it is also uniq
+            let stream = unsafe { Pin::new_unchecked(stream) };
+
             match stream.poll_next(cx) {
-                Poll::Ready(Some(polled)) => {
-                    out = Poll::Ready(Some((stream_id.clone(), polled)));
+                Poll::Ready(Some(Ok(polled))) => {
+                    out = Poll::Ready(Some((id.clone(), polled)));
                     break;
                 }
+                Poll::Ready(Some(Err(err))) => {
+                    log::error!("[{id}] {err:?}");
+                    ids_to_drop.push(id.clone());
+                }
                 Poll::Ready(None) => {
-                    disconnected.push(stream_id.clone());
+                    ids_to_drop.push(id.clone());
                 }
                 Poll::Pending => {}
             }
         }
 
-        for id in disconnected {
+        for id in ids_to_drop {
             self.map.remove(&id);
         }
 
