@@ -1,5 +1,8 @@
 server:
-    cargo run --bin shared-clipboard-server
+    RUST_LOG=trace cargo run --bin shared-clipboard-server -- --start
+
+generate-config:
+    RUST_LOG=trace cargo run --bin shared-clipboard-server -- --generate
 
 client:
-    cargo run --bin client
+    RUST_LOG=trace cargo run --bin client
