@@ -1,14 +1,14 @@
 use anyhow::{Context as _, Result, bail};
+use common::{AuthRequest, AuthResponse, Clip, Config};
 use futures_util::{SinkExt as _, StreamExt as _};
 use http::Uri;
-use shared_clipboard_server::{Config, Payload};
 use tokio::net::TcpStream;
 use tokio_websockets::{ClientBuilder, MaybeTlsStream, Message, WebSocketStream};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     pretty_env_logger::init();
-    let config = Config::read().await?;
+    let config = Config::read()?;
     log::info!("Running with config {:?}", config);
 
     let name = std::env::args()
@@ -28,16 +28,15 @@ async fn main() -> Result<()> {
     loop {
         tokio::select! {
             Some(Ok(message)) = client.next() => {
-                let text = message.as_text().unwrap();
-                let payload: Payload = serde_json::from_str(text).unwrap();
-                println!("<< {:?}", payload);
+                if let Ok(clip) = Clip::try_from(message) {
+                    println!("<< {:?}", clip);
+                }
             }
 
             _ = interval.tick() => {
-                let payload = Payload::clip(format!("message {n}"));
-                let message = Message::from(payload);
-                println!(">> {:?}", message);
-                client.send(message).await?;
+                let clip = Clip::new(format!("message {n}"));
+                println!(">> {:?}", clip);
+                client.send(Message::from(clip)).await?;
                 n += 1;
             }
             else => {
@@ -55,8 +54,7 @@ async fn authenticate(
     config: &Config,
 ) -> Result<()> {
     log::info!("Authenticating as {name:?}");
-    let payload = Payload::auth(&name, &config.token);
-    let message = Message::from(payload);
+    let message = Message::from(AuthRequest::new(&name, &config.token));
     ws.send(message).await?;
     log::info!("Authentication message sent, waiting for reply...");
 
@@ -65,19 +63,11 @@ async fn authenticate(
         .await
         .context("closed stream, no auth response")?
         .context("websocket error, no auth response")?;
-    let text = message.as_text().context("non-text auth response")?;
-    let payload: Payload = serde_json::from_str(text).context("malformed auth response")?;
+    let auth = AuthResponse::try_from(message)?;
 
-    if let Payload::AuthResult { success } = payload {
-        if success {
-            Ok(())
-        } else {
-            bail!("auth failed")
-        }
+    if auth.success {
+        Ok(())
     } else {
-        bail!(
-            "expected Payload::AuthenticateAck response, got {:?}",
-            payload
-        )
+        bail!("auth failed")
     }
 }

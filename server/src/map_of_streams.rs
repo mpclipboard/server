@@ -1,11 +1,13 @@
-use futures_util::Stream;
+use common::Clip;
+use futures_util::{SinkExt, Stream};
 use std::{collections::HashMap, pin::Pin, task::Poll};
+use tokio::net::TcpStream;
+use tokio_websockets::{Message, WebSocketStream};
 
-pub(crate) struct SelectAllIdentified<T, S>
-where
-    S: Stream<Item = T> + Unpin,
-{
-    map: HashMap<StreamId, Pin<Box<S>>>,
+type Ws = WebSocketStream<TcpStream>;
+
+pub(crate) struct MapOfStreams {
+    map: HashMap<StreamId, Pin<Box<Ws>>>,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -23,31 +25,33 @@ impl std::fmt::Display for StreamId {
     }
 }
 
-impl<T, S> SelectAllIdentified<T, S>
-where
-    S: Stream<Item = T> + Unpin,
-{
+impl MapOfStreams {
     pub(crate) fn new() -> Self {
         Self {
             map: HashMap::new(),
         }
     }
 
-    pub(crate) fn insert(&mut self, uuid: impl Into<String>, stream: S) {
+    pub(crate) fn insert(&mut self, uuid: impl Into<String>, stream: Ws) {
         self.map.insert(StreamId(uuid.into()), Box::pin(stream));
     }
 
-    pub(crate) fn remove(&mut self, stream_id: &StreamId) -> S {
+    pub(crate) fn remove(&mut self, stream_id: &StreamId) -> Ws {
         let value = self.map.remove(stream_id).expect("stream_id must be valid");
         *Pin::into_inner(value)
     }
+
+    pub(crate) async fn broadcast(&mut self, clip: Clip) {
+        for (id, conn) in self.map.iter_mut() {
+            if let Err(err) = conn.send(Message::from(clip.clone())).await {
+                log::error!("[{id}] failed to broadcast clip: {err:?}");
+            }
+        }
+    }
 }
 
-impl<T, S> Stream for SelectAllIdentified<T, S>
-where
-    S: Stream<Item = T> + Unpin,
-{
-    type Item = (StreamId, T);
+impl Stream for MapOfStreams {
+    type Item = (StreamId, Result<Message, tokio_websockets::Error>);
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,

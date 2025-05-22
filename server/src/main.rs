@@ -1,15 +1,11 @@
 use anyhow::Result;
 use args::Args;
-use clip::Clip;
-use config::Config;
+use common::Config;
 
 mod args;
-mod clip;
-mod config;
-mod payload;
-mod select_all_identified;
+mod map_of_streams;
 mod server;
-mod ws_wrapper;
+mod store;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,7 +13,7 @@ async fn main() -> Result<()> {
 
     match Args::parse()? {
         Args::Generate => {
-            Config::generate()?;
+            Config::generate();
             std::process::exit(0);
         }
         Args::Start => {
