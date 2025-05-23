@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]
-pub struct Config {
-    pub hostname: String,
-    pub port: u16,
-    pub token: String,
+pub(crate) struct Config {
+    pub(crate) hostname: String,
+    pub(crate) port: u16,
+    pub(crate) token: String,
 }
 
 impl std::fmt::Debug for Config {
@@ -20,7 +20,7 @@ impl std::fmt::Debug for Config {
 }
 
 impl Config {
-    pub fn generate() {
+    pub(crate) fn generate() {
         let config = Self {
             hostname: String::from("localhost"),
             port: 3000,
@@ -30,7 +30,7 @@ impl Config {
         println!("{}", json);
     }
 
-    pub fn read() -> Result<Self> {
+    pub(crate) fn read() -> Result<Self> {
         let path = if cfg!(debug_assertions) {
             "config.json"
         } else {

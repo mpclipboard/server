@@ -1,5 +1,8 @@
 use std::time::Duration;
 
+use anyhow::bail;
+
+#[derive(Debug)]
 pub(crate) struct Profile {
     pub(crate) name: &'static str,
     pub(crate) auth: bool,
@@ -35,28 +38,16 @@ const MALFORMED: Profile = Profile {
     correct: false,
 };
 
-const HELP: &str = r#"
-USAGE: client <PROFILE>
+impl TryFrom<String> for Profile {
+    type Error = anyhow::Error;
 
-Profiles:
-
-  alice     -- correct auth, interval = 1s, correct
-  bob       -- correct auth, interval = 5s, correct
-  hacker    -- incorrect auth
-  malformed -- correct auth, interval = 1s, incorrect (sends malformed clips)
-"#;
-
-pub(crate) fn select_profile() -> Profile {
-    let name = std::env::args().nth(1);
-
-    match name.as_deref() {
-        Some("alice") => ALICE,
-        Some("bob") => BOB,
-        Some("hacker") => HACKER,
-        Some("malformed") => MALFORMED,
-        _ => {
-            eprintln!("{}", HELP);
-            std::process::exit(1);
+    fn try_from(name: String) -> Result<Self, Self::Error> {
+        match &name[..] {
+            "alice" => Ok(ALICE),
+            "bob" => Ok(BOB),
+            "hacker" => Ok(HACKER),
+            "malformed" => Ok(MALFORMED),
+            other => bail!("unknown profile {other:?}, known: alice, bob, hacker, malformed"),
         }
     }
 }

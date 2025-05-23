@@ -1,8 +1,9 @@
 use anyhow::Result;
 use args::Args;
-use common::Config;
+use config::Config;
 
 mod args;
+mod config;
 mod map_of_streams;
 mod server;
 mod store;
@@ -18,7 +19,8 @@ async fn main() -> Result<()> {
             std::process::exit(0);
         }
         Args::Start => {
-            server::start().await?;
+            let config: &'static Config = Box::leak(Box::new(Config::read()?));
+            server::start(config).await?;
         }
     }
 

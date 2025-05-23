@@ -6,8 +6,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_websockets::{Message, ServerBuilder, WebSocketStream};
 use uuid::Uuid;
 
-pub(crate) async fn start() -> Result<()> {
-    let config: &'static Config = Box::leak(Box::new(Config::read()?));
+pub(crate) async fn start(config: &'static Config) -> Result<()> {
     log::info!("Running with config {config:?}");
 
     log::info!("Starting server on {}:{}", config.hostname, config.port);

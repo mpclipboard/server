@@ -1,33 +1,40 @@
 use anyhow::{Context as _, Result, bail};
-use common::{AuthRequest, AuthResponse, Clip, Config};
+use args::Args;
+use common::{AuthRequest, AuthResponse, Clip};
 use futures_util::{SinkExt as _, StreamExt as _};
-use http::Uri;
-use profiles::{Profile, select_profile};
+use profiles::Profile;
 use tokio::net::TcpStream;
-use tokio_websockets::{ClientBuilder, MaybeTlsStream, Message, WebSocketStream};
+use tokio_websockets::{MaybeTlsStream, Message, WebSocketStream};
 
+mod args;
+mod builder;
 mod profiles;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     pretty_env_logger::init();
-    let config = Config::read()?;
-    log::info!("Running with config {:?}", config);
 
-    let Profile {
-        name,
-        auth,
-        interval,
-        correct,
-    } = select_profile();
+    let args = Args::parse()?;
+    log::info!("Running with args {:?}", args);
+    let Args {
+        profile:
+            Profile {
+                name,
+                auth,
+                interval,
+                correct,
+            },
+        url,
+        token,
+    } = args;
 
     log::info!("Starting client with profile {}", name);
 
-    let uri = Uri::from_static("ws://localhost:3000");
-    let (mut client, _) = ClientBuilder::from_uri(uri).connect().await?;
+    let (mut ws, response) = builder::new(&url).await?;
+    log::info!("WS(S) connect response: {response:?}");
 
     if auth {
-        authenticate(&mut client, name, &config).await?;
+        authenticate(&mut ws, name, &token).await?;
     }
 
     let mut interval = tokio::time::interval(interval);
@@ -35,7 +42,7 @@ async fn main() -> Result<()> {
 
     loop {
         tokio::select! {
-            message = client.next() => {
+            message = ws.next() => {
                 match message {
                     None => {
                         log::info!("connection closed, exiting");
@@ -66,7 +73,7 @@ async fn main() -> Result<()> {
                     log::info!(">> malformed data");
                     Message::text("malformed data")
                 };
-                client.send(message).await?;
+                ws.send(message).await?;
                 n += 1;
             }
         }
@@ -78,10 +85,10 @@ async fn main() -> Result<()> {
 async fn authenticate(
     ws: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
     name: &str,
-    config: &Config,
+    token: &str,
 ) -> Result<()> {
     log::info!("Authenticating as {name:?}");
-    let message = Message::from(AuthRequest::new(name, &config.token));
+    let message = Message::from(AuthRequest::new(name, token));
     ws.send(message).await?;
     log::info!("Authentication message sent, waiting for reply...");
 
