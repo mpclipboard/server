@@ -2,9 +2,10 @@
 members = ["server", "common", "client"]
 resolver = "2"
 
-
 [workspace.package]
 edition = "2024"
+authors = ["Ilya Bylich"]
+license = "MIT"
 
 [workspace.dependencies]
 anyhow = "1"
