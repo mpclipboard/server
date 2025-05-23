@@ -1,0 +1,12 @@
+[Unit]
+AssertPathExists=/usr/bin/shared-clipboard-server
+
+[Service]
+WorkingDirectory=~
+ExecStart=/usr/bin/shared-clipboard-server --start
+Restart=always
+PrivateTmp=false
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

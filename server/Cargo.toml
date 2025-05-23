@@ -16,3 +16,17 @@ serde_json = { workspace = true }
 futures-util = { workspace = true }
 uuid = { workspace = true }
 log = { workspace = true }
+
+[package.metadata.deb]
+assets = [
+    [
+        "target/release/shared-clipboard-server",
+        "usr/bin/shared-clipboard-server",
+        "755",
+    ],
+    [
+        "debian/shared-clipboard-server.service",
+        "lib/systemd/system/shared-clipboard-server.service",
+        "644",
+    ],
+]
