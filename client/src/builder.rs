@@ -1,6 +1,9 @@
 use anyhow::{Context as _, Result};
 use http::Response;
+use rustls::ClientConfig;
+use std::sync::Arc;
 use tokio::net::TcpStream;
+use tokio_rustls::TlsConnector;
 use tokio_websockets::{ClientBuilder, Connector, MaybeTlsStream, WebSocketStream};
 
 pub(crate) async fn new(
@@ -11,9 +14,20 @@ pub(crate) async fn new(
 
     let mut builder = ClientBuilder::from_uri(uri);
 
-    let tls_connector = Connector::NativeTls(tokio_native_tls::TlsConnector::from(
-        tokio_native_tls::native_tls::TlsConnector::new().unwrap(),
-    ));
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
+    let root_store = rustls::RootCertStore {
+        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+    };
+
+    let config = ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    let connector = TlsConnector::from(Arc::new(config));
+
+    let tls_connector = Connector::Rustls(connector);
 
     if is_wss {
         log::info!("wss protocol detected, enabling TLS");

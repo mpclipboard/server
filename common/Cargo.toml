@@ -8,4 +8,4 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
-tokio-websockets = { workspace = true }
+tokio-websockets = { version = "0.11", default-features = false }

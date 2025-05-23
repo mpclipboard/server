@@ -13,7 +13,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - run: sudo apt update
+      - run: sudo apt install musl musl-dev
+
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
       - uses: extractions/setup-just@v3
 
       - name: install cargo-deb
@@ -30,5 +37,5 @@ jobs:
           artifactErrorsFailBuild: true
           removeArtifacts: true
           tag: latest
-          artifacts: target/debian/*.deb
+          artifacts: target/x86_64-unknown-linux-musl/debian/*.deb
           token: ${{ secrets.GITHUB_TOKEN }}
