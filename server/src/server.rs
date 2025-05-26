@@ -6,11 +6,14 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_websockets::{Message, ServerBuilder, WebSocketStream};
 use uuid::Uuid;
 
-pub(crate) async fn start(config: &'static Config) -> Result<()> {
+pub(crate) async fn start(config: &'static Config) {
     log::info!("Running with config {config:?}");
 
     log::info!("Starting server on {}:{}", config.hostname, config.port);
-    let listener = TcpListener::bind((config.hostname.clone(), config.port)).await?;
+    let Ok(listener) = TcpListener::bind((config.hostname.clone(), config.port)).await else {
+        log::error!("failed to bind to {}:{}", config.hostname, config.port);
+        std::process::exit(1);
+    };
 
     let mut store = Store::new();
 
@@ -20,9 +23,15 @@ pub(crate) async fn start(config: &'static Config) -> Result<()> {
     loop {
         tokio::select! {
             Ok((stream, _)) = listener.accept() => {
-                let (_, ws) = ServerBuilder::new().accept(stream).await?;
-                let id = Uuid::new_v4();
-                anonymous.insert(id, ws);
+                match ServerBuilder::new().accept(stream).await {
+                    Ok((_, ws)) => {
+                        let id = Uuid::new_v4();
+                        anonymous.insert(id, ws);
+                    },
+                    Err(err) => {
+                        log::error!("failed to handle client: {err:?}");
+                    }
+                }
             }
 
             Some((id, message)) = anonymous.next() => {

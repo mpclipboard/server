@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
         }
         Args::Start => {
             let config: &'static Config = Box::leak(Box::new(Config::read()?));
-            server::start(config).await?;
+            server::start(config).await;
         }
     }
 
