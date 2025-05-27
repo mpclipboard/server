@@ -6,7 +6,7 @@ use tokio_websockets::Message;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Clip {
     pub text: String,
-    pub timestamp: u64,
+    pub timestamp: u128,
 }
 
 impl Clip {
@@ -16,7 +16,7 @@ impl Clip {
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
-                .as_secs(),
+                .as_millis(),
         }
     }
 }
