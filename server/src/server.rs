@@ -57,7 +57,7 @@ pub(crate) async fn start(config: &'static Config) {
                 match Clip::try_from(message) {
                     Ok(clip) => {
                         log::info!("[{id}] got clip {:?} at {}", clip.text, clip.timestamp);
-                        if store.add(clip.clone()) {
+                        if store.add(&clip) {
                             authenticated.broadcast(clip).await;
                         } else {
                             log::info!("[{id}] ignoring stale clip");
