@@ -1,8 +1,8 @@
 use anyhow::{Context as _, Result, bail};
 use args::Args;
-use common::{AuthRequest, AuthResponse, Clip};
 use futures_util::{SinkExt as _, StreamExt as _};
 use profiles::Profile;
+use shared_clipboard_common::{AuthRequest, AuthResponse, Clip};
 use tokio::net::TcpStream;
 use tokio_websockets::{MaybeTlsStream, Message, WebSocketStream};
 

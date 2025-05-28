@@ -6,7 +6,7 @@ authors = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
-common = { path = "../common" }
+shared-clipboard-common = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
 pretty_env_logger = { workspace = true }

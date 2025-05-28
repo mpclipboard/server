@@ -1,6 +1,6 @@
 use crate::stream_id::StreamId;
-use common::Clip;
 use futures_util::{SinkExt, Stream};
+use shared_clipboard_common::Clip;
 use std::{collections::HashMap, pin::Pin, task::Poll};
 use tokio::net::TcpStream;
 use tokio_websockets::{Message, WebSocketStream};

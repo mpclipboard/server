@@ -6,7 +6,6 @@ mod args;
 mod config;
 mod map_of_streams;
 mod server;
-mod store;
 mod stream_id;
 
 #[tokio::main]
