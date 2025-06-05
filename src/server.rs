@@ -1,7 +1,7 @@
 use crate::{Config, map_of_streams::MapOfStreams};
 use anyhow::{Result, bail};
 use futures_util::{SinkExt as _, StreamExt};
-use shared_clipboard_common::{AuthRequest, AuthResponse, Clip, Store};
+use mpclipboard_common::{AuthRequest, AuthResponse, Clip, Store};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_websockets::{Message, ServerBuilder, WebSocketStream};
 use uuid::Uuid;

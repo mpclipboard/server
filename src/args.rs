@@ -8,7 +8,7 @@ pub(crate) enum Args {
 
 impl Args {
     const HELP: &str = r#"
-Usage: shared-clipboard-server [OPTIONS]
+Usage: mpclipboard-server [OPTIONS]
 
 Options:
 

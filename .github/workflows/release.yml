@@ -28,7 +28,7 @@ jobs:
         with:
           tool: cargo-deb
 
-      - run: just build-deb-packages
+      - run: just build-deb-package
 
       - name: release
         uses: ncipollo/release-action@v1

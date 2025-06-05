@@ -34,7 +34,7 @@ impl Config {
         let path = if cfg!(debug_assertions) {
             "config.toml"
         } else {
-            "/etc/shared-clipboard-server/config.toml"
+            "/etc/mpclipboard-server/config.toml"
         };
 
         let content =

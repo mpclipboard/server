@@ -1,9 +1,9 @@
 [Unit]
-AssertPathExists=/usr/bin/shared-clipboard-server
+AssertPathExists=/usr/bin/mpclipboard-server
 
 [Service]
 WorkingDirectory=~
-ExecStart=/usr/bin/shared-clipboard-server --start
+ExecStart=/usr/bin/mpclipboard-server --start
 Restart=always
 PrivateTmp=false
 NoNewPrivileges=true
