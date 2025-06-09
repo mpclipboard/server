@@ -1,10 +1,9 @@
-use crate::{map_of_streams::MapOfStreams, stream_id::StreamId};
-use anyhow::{Context as _, Result, bail};
-use futures_util::{SinkExt as _, StreamExt as _};
-use mpclipboard_common::{AuthRequest, AuthResponse, Clip, Store};
+use crate::{handshake::Handshake, map_of_streams::MapOfStreams, stream_id::StreamId};
+use anyhow::Result;
+use futures_util::StreamExt as _;
+use mpclipboard_common::{Clip, Store};
 use tokio::net::{TcpListener, TcpStream};
-use tokio_websockets::{Message, ServerBuilder, WebSocketStream};
-use uuid::Uuid;
+use tokio_websockets::Message;
 
 pub(crate) struct EventLoop {
     listener: TcpListener,
@@ -12,8 +11,7 @@ pub(crate) struct EventLoop {
 
     store: Store,
 
-    anonymous: MapOfStreams,
-    authenticated: MapOfStreams,
+    connections: MapOfStreams,
 }
 
 impl EventLoop {
@@ -22,8 +20,7 @@ impl EventLoop {
             listener,
             token,
             store: Store::new(),
-            anonymous: MapOfStreams::new(),
-            authenticated: MapOfStreams::new(),
+            connections: MapOfStreams::new(),
         }
     }
 
@@ -36,14 +33,8 @@ impl EventLoop {
                     }
                 }
 
-                Some((id, message)) = self.anonymous.next() => {
-                    if let Err(err) = self.on_message_from_anonymous(id, message).await {
-                        log::error!("{err:?}");
-                    }
-                }
-
-                Some((id, message)) = self.authenticated.next() => {
-                    if let Err(err) = self.on_message_from_authenticated(id, message).await {
+                Some((id, message)) = self.connections.next() => {
+                    if let Err(err) = self.on_message(id, message).await {
                         log::error!("{err:?}");
                     }
                 }
@@ -52,64 +43,30 @@ impl EventLoop {
     }
 
     async fn on_new_connection(&mut self, stream: TcpStream) -> Result<()> {
-        let (_, ws) = ServerBuilder::new()
-            .accept(stream)
-            .await
-            .context("failed to handle new client")?;
-        let id = Uuid::new_v4();
-        self.anonymous.insert(id, ws);
+        let mut handshake = Handshake::parse(stream).await?;
+        handshake.authenticate(self.token).await?;
+        let (name, ws) = handshake.accept().await?;
+
+        self.connections.insert(name, ws);
         Ok(())
     }
 
-    async fn on_message_from_anonymous(&mut self, id: StreamId, message: Message) -> Result<()> {
-        if message.is_ping() {
-            return Ok(());
-        }
-
-        let mut ws = self.anonymous.remove(&id);
-
-        let AuthRequest { name, token } = AuthRequest::try_from(message)?;
-        if token != self.token {
-            send_message(&mut ws, AuthResponse::new(false)).await;
-            bail!("[auth] wrong token");
-        }
-
-        log::info!("[auth] OK {:?}", name);
-        send_message(&mut ws, AuthResponse::new(true)).await;
-        if let Some(clip) = self.store.current() {
-            send_message(&mut ws, clip).await;
-        }
-        self.authenticated.insert(name, ws);
-
-        Ok(())
-    }
-
-    async fn on_message_from_authenticated(
-        &mut self,
-        id: StreamId,
-        message: Message,
-    ) -> Result<()> {
+    async fn on_message(&mut self, id: StreamId, message: Message) -> Result<()> {
         log::info!("[{id}] incoming message: {message:?}");
 
-        if message.is_ping() {
+        if message.is_ping() || message.is_pong() {
             return Ok(());
         }
 
-        if let Ok(clip) = Clip::try_from(message) {
+        if let Ok(clip) = Clip::try_from(&message) {
             log::info!("[{id}] got clip {:?} at {}", clip.text, clip.timestamp);
             if self.store.add(&clip) {
-                self.authenticated.broadcast(clip).await;
+                self.connections.broadcast(clip).await;
             } else {
                 log::info!("[{id}] ignoring stale clip");
             }
         }
 
         Ok(())
-    }
-}
-
-async fn send_message(ws: &mut WebSocketStream<TcpStream>, message: impl Into<Message>) {
-    if let Err(err) = ws.send(message.into()).await {
-        log::error!("[auth] failed to send message: {err:?}");
     }
 }

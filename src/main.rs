@@ -7,6 +7,7 @@ use tokio::net::TcpListener;
 mod args;
 mod config;
 mod event_loop;
+mod handshake;
 mod map_of_streams;
 mod stream_id;
 

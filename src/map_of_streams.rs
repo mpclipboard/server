@@ -18,8 +18,8 @@ impl MapOfStreams {
         }
     }
 
-    pub(crate) fn insert(&mut self, uuid: impl Into<String>, stream: Ws) {
-        self.map.insert(StreamId(uuid.into()), stream);
+    pub(crate) fn insert(&mut self, id: String, stream: Ws) {
+        self.map.insert(StreamId(id), stream);
     }
 
     pub(crate) fn remove(&mut self, stream_id: &StreamId) -> Ws {
@@ -27,10 +27,17 @@ impl MapOfStreams {
     }
 
     pub(crate) async fn broadcast(&mut self, clip: Clip) {
+        let mut ids_to_drop = vec![];
+
         for (id, conn) in self.map.iter_mut() {
-            if let Err(err) = conn.send(Message::from(clip.clone())).await {
+            if let Err(err) = conn.send(Message::from(&clip)).await {
                 log::error!("[{id}] failed to broadcast clip: {err:?}");
+                ids_to_drop.push(id.clone());
             }
+        }
+
+        for id in ids_to_drop {
+            self.remove(&id);
         }
     }
 }
@@ -68,7 +75,7 @@ impl Stream for MapOfStreams {
         }
 
         for id in ids_to_drop {
-            self.map.remove(&id);
+            self.remove(&id);
         }
 
         out
