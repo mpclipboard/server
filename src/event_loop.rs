@@ -1,6 +1,6 @@
 use crate::{handshake::Handshake, map_of_streams::MapOfStreams, stream_id::StreamId};
 use anyhow::Result;
-use futures_util::StreamExt as _;
+use futures_util::{SinkExt as _, StreamExt as _};
 use mpclipboard_common::{Clip, Store};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_websockets::Message;
@@ -45,9 +45,15 @@ impl EventLoop {
     async fn on_new_connection(&mut self, stream: TcpStream) -> Result<()> {
         let mut handshake = Handshake::parse(stream).await?;
         handshake.authenticate(self.token).await?;
-        let (name, ws) = handshake.accept().await?;
+        let (id, mut ws) = handshake.accept().await?;
 
-        self.connections.insert(name, ws);
+        if let Some(clip) = self.store.current() {
+            if ws.send(Message::from(&clip)).await.is_err() {
+                log::error!("[{id}] failed to send message");
+            }
+        }
+
+        self.connections.insert(id, ws);
         Ok(())
     }
 
