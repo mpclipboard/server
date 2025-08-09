@@ -1,11 +1,17 @@
 use crate::{
-    clip::Clip, config::Config, handshake::Handshake, multiplexer::Multiplexer, name::Name,
+    client::Client,
+    clip::Clip,
+    config::Config,
+    name::Name,
+    pending::{Auth, Pending},
     store::Store,
 };
-use anyhow::Result;
-use futures_util::{SinkExt as _, StreamExt as _};
+use anyhow::{Context as _, Result, bail};
+use futures_util::StreamExt as _;
 use tokio::net::{TcpListener, TcpStream};
-use tokio_websockets::Message;
+use tokio_stream::StreamMap;
+use tokio_websockets::ServerBuilder;
+use uuid::Uuid;
 
 pub(crate) struct EventLoop {
     listener: TcpListener,
@@ -13,7 +19,8 @@ pub(crate) struct EventLoop {
 
     store: Store,
 
-    connections: Multiplexer<Name>,
+    clients: StreamMap<Name, Client>,
+    pending: StreamMap<Uuid, Pending>,
 }
 
 impl EventLoop {
@@ -22,7 +29,8 @@ impl EventLoop {
             listener,
             config,
             store: Store::new(),
-            connections: Multiplexer::new(),
+            clients: StreamMap::new(),
+            pending: StreamMap::new(),
         }
     }
 
@@ -30,52 +38,90 @@ impl EventLoop {
         loop {
             tokio::select! {
                 Ok((stream, _)) = self.listener.accept() => {
-                    if let Err(err) = self.on_new_connection(stream).await {
+                    if let Err(err) = self.accept(stream).await {
                         log::error!("{err:?}");
                     }
                 }
 
-                Some((name, message)) = self.connections.next() => {
-                    if let Err(err) = self.on_message(name, message).await {
-                        log::error!("{err:?}");
+                Some((id, auth)) = self.pending.next() => {
+                    if let Err(err) = self.authenticate(id, auth).await {
+                        log::error!("[{id}] {err:?}")
+                    }
+                }
+
+                Some((name, clip)) = self.clients.next() => {
+                    if let Err(err) = self.process_new_clip(name, clip).await {
+                        log::error!("[{name}] {err:?}")
                     }
                 }
             }
         }
     }
 
-    async fn on_new_connection(&mut self, stream: TcpStream) -> Result<()> {
-        let mut handshake = Handshake::parse(stream).await?;
-        handshake.authenticate(&self.config.token).await?;
-        let (name, mut ws) = handshake.accept().await?;
-        let name = Name::new(name)?;
+    async fn accept(&mut self, stream: TcpStream) -> Result<()> {
+        let (_, ws) = ServerBuilder::new()
+            .accept(stream)
+            .await
+            .context("failed to accept a request")?;
+
+        let id = Uuid::new_v4();
+        let conn = Pending::new(id, ws);
+        log::info!("new pending client {id}");
+
+        self.pending.insert(id, conn);
+        Ok(())
+    }
+
+    async fn authenticate(&mut self, id: Uuid, auth: Auth) -> Result<()> {
+        let mut conn = self
+            .pending
+            .remove(&id)
+            .context("malformed pending state")?;
+        log::info!("auth message from client {id}: {auth:?}");
+
+        let name = Name::new(auth.name)?;
+
+        if auth.token == self.config.token {
+            conn.reply(true).await?;
+        } else {
+            conn.reply(false).await?;
+            bail!("invalid token in auth request");
+        }
+
+        let mut conn = conn.promote(name);
 
         if let Some(clip) = self.store.current() {
-            if ws.send(clip.to_message()).await.is_err() {
-                log::error!("[{name}] failed to send message");
-            }
+            conn.send(&clip).await?;
         }
 
-        self.connections.insert(name, ws);
+        self.clients.insert(name, conn);
         Ok(())
     }
 
-    async fn on_message(&mut self, name: Name, message: Message) -> Result<()> {
-        log::info!("[{name}] incoming message: {message:?}");
+    async fn process_new_clip(&mut self, name: Name, clip: Clip) -> Result<()> {
+        log::info!("[{name}] got clip {:?} at {}", clip.text, clip.timestamp);
 
-        if message.is_ping() || message.is_pong() {
-            return Ok(());
-        }
-
-        if let Ok(clip) = Clip::from_message(&message) {
-            log::info!("[{name}] got clip {:?} at {}", clip.text, clip.timestamp);
-            if self.store.add(&clip) {
-                self.connections.broadcast(clip).await;
-            } else {
-                log::info!("[{name}] ignoring stale clip");
-            }
+        if self.store.add(&clip) {
+            self.broadcast(clip).await;
+        } else {
+            log::info!("[{name}] ignoring stale clip");
         }
 
         Ok(())
+    }
+
+    async fn broadcast(&mut self, clip: Clip) {
+        let mut ids_to_drop = vec![];
+
+        for (name, conn) in self.clients.iter_mut() {
+            if let Err(err) = conn.send(&clip).await {
+                log::error!("[{name}] failed to broadcast clip: {err:?}");
+                ids_to_drop.push(*name);
+            }
+        }
+
+        for id in ids_to_drop {
+            self.clients.remove(&id);
+        }
     }
 }

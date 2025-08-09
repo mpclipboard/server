@@ -16,19 +16,16 @@ impl Store {
 
     #[must_use]
     pub(crate) fn add(&mut self, clip: &Clip) -> bool {
-        match self.clip.as_mut() {
-            Some(current) => {
-                if clip.timestamp > current.timestamp && clip.text != current.text {
-                    *current = clip.clone();
-                    true
-                } else {
-                    false
-                }
-            }
-            None => {
-                self.clip = Some(clip.clone());
-                true
-            }
+        let do_update = self.clip.is_none()
+            || self
+                .clip
+                .as_ref()
+                .is_some_and(|current| clip.newer_than(current));
+
+        if do_update {
+            self.clip = Some(clip.clone());
         }
+
+        do_update
     }
 }

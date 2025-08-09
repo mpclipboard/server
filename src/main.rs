@@ -3,13 +3,12 @@ use anyhow::{Context as _, Result};
 use config::Config;
 use tokio::net::TcpListener;
 
-mod auth;
+mod client;
 mod clip;
 mod config;
 mod event_loop;
-mod handshake;
-mod multiplexer;
 mod name;
+mod pending;
 mod store;
 
 #[tokio::main(flavor = "current_thread")]

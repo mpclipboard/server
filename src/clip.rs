@@ -1,6 +1,4 @@
-use anyhow::{Context as _, Result};
 use serde::{Deserialize, Serialize};
-use tokio_websockets::Message;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct Clip {
@@ -9,12 +7,7 @@ pub(crate) struct Clip {
 }
 
 impl Clip {
-    pub(crate) fn to_message(&self) -> Message {
-        Message::text(serde_json::to_string(self).unwrap())
-    }
-
-    pub(crate) fn from_message(message: &Message) -> Result<Self> {
-        let text = message.as_text().context("not a text message")?;
-        serde_json::from_str(text).context("malformed json message")
+    pub(crate) fn newer_than(&self, other: &Clip) -> bool {
+        self.timestamp > other.timestamp && self.text != other.text
     }
 }
