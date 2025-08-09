@@ -8,9 +8,9 @@ mod clip;
 mod config;
 mod event_loop;
 mod handshake;
-mod map_of_streams;
+mod multiplexer;
+mod name;
 mod store;
-mod stream_id;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {

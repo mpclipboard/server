@@ -1,6 +1,6 @@
 use crate::{
-    clip::Clip, config::Config, handshake::Handshake, map_of_streams::MapOfStreams, store::Store,
-    stream_id::StreamId,
+    clip::Clip, config::Config, handshake::Handshake, multiplexer::Multiplexer, name::Name,
+    store::Store,
 };
 use anyhow::Result;
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -13,7 +13,7 @@ pub(crate) struct EventLoop {
 
     store: Store,
 
-    connections: MapOfStreams,
+    connections: Multiplexer<Name>,
 }
 
 impl EventLoop {
@@ -22,7 +22,7 @@ impl EventLoop {
             listener,
             config,
             store: Store::new(),
-            connections: MapOfStreams::new(),
+            connections: Multiplexer::new(),
         }
     }
 
@@ -35,8 +35,8 @@ impl EventLoop {
                     }
                 }
 
-                Some((id, message)) = self.connections.next() => {
-                    if let Err(err) = self.on_message(id, message).await {
+                Some((name, message)) = self.connections.next() => {
+                    if let Err(err) = self.on_message(name, message).await {
                         log::error!("{err:?}");
                     }
                 }
@@ -47,31 +47,32 @@ impl EventLoop {
     async fn on_new_connection(&mut self, stream: TcpStream) -> Result<()> {
         let mut handshake = Handshake::parse(stream).await?;
         handshake.authenticate(&self.config.token).await?;
-        let (id, mut ws) = handshake.accept().await?;
+        let (name, mut ws) = handshake.accept().await?;
+        let name = Name::new(name)?;
 
         if let Some(clip) = self.store.current() {
             if ws.send(clip.to_message()).await.is_err() {
-                log::error!("[{id}] failed to send message");
+                log::error!("[{name}] failed to send message");
             }
         }
 
-        self.connections.insert(id, ws);
+        self.connections.insert(name, ws);
         Ok(())
     }
 
-    async fn on_message(&mut self, id: StreamId, message: Message) -> Result<()> {
-        log::info!("[{id}] incoming message: {message:?}");
+    async fn on_message(&mut self, name: Name, message: Message) -> Result<()> {
+        log::info!("[{name}] incoming message: {message:?}");
 
         if message.is_ping() || message.is_pong() {
             return Ok(());
         }
 
         if let Ok(clip) = Clip::from_message(&message) {
-            log::info!("[{id}] got clip {:?} at {}", clip.text, clip.timestamp);
+            log::info!("[{name}] got clip {:?} at {}", clip.text, clip.timestamp);
             if self.store.add(&clip) {
                 self.connections.broadcast(clip).await;
             } else {
-                log::info!("[{id}] ignoring stale clip");
+                log::info!("[{name}] ignoring stale clip");
             }
         }
 
