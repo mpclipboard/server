@@ -1,10 +1,9 @@
 use crate::event_loop::EventLoop;
-use anyhow::Result;
-use args::Args;
+use anyhow::{Context as _, Result};
 use config::Config;
 use tokio::net::TcpListener;
 
-mod args;
+mod auth;
 mod clip;
 mod config;
 mod event_loop;
@@ -17,26 +16,16 @@ mod stream_id;
 async fn main() -> Result<()> {
     pretty_env_logger::init();
 
-    match Args::parse()? {
-        Args::Generate => {
-            Config::generate();
-            std::process::exit(0);
-        }
-        Args::Start => {
-            let config: &'static Config = Box::leak(Box::new(Config::read()?));
-            log::info!("Running with config {config:?}");
+    let config = Config::read().await?;
+    log::info!("Running with config {config:?}");
 
-            log::info!("Starting server on {}:{}", config.hostname, config.port);
-            let Ok(listener) = TcpListener::bind((config.hostname.clone(), config.port)).await
-            else {
-                log::error!("failed to bind to {}:{}", config.hostname, config.port);
-                std::process::exit(1);
-            };
+    log::info!("Starting server on http://127.0.01:{}", config.port);
+    let listener = TcpListener::bind(("127.0.0.1", config.port))
+        .await
+        .context("failed to bind")?;
 
-            let mut event_loop = EventLoop::new(listener, &config.token);
-            event_loop.start().await
-        }
-    }
+    let mut event_loop = EventLoop::new(listener, config);
+    event_loop.start().await;
 
     Ok(())
 }

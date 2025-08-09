@@ -1,10 +1,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Config {
-    pub(crate) hostname: String,
     pub(crate) port: u16,
     pub(crate) token: String,
 }
@@ -12,34 +10,23 @@ pub(crate) struct Config {
 impl std::fmt::Debug for Config {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Config")
-            .field("hostname", &self.hostname)
             .field("port", &self.port)
             .field("token", &"*****")
             .finish()
     }
 }
 
+const PATH: &str = if cfg!(debug_assertions) {
+    "config.toml"
+} else {
+    "/etc/mpclipboard-server/config.toml"
+};
+
 impl Config {
-    pub(crate) fn generate() {
-        let config = Self {
-            hostname: String::from("localhost"),
-            port: 3000,
-            token: Uuid::new_v4().to_string(),
-        };
-        let toml = toml::to_string_pretty(&config).expect("static values, can't fail");
-        println!("{}", toml);
-    }
-
-    pub(crate) fn read() -> Result<Self> {
-        let path = if cfg!(debug_assertions) {
-            "config.toml"
-        } else {
-            "/etc/mpclipboard-server/config.toml"
-        };
-
-        let content =
-            std::fs::read_to_string(path).with_context(|| format!("failed to read {path}"))?;
-        let config: Self = toml::from_str(&content)?;
-        Ok(config)
+    pub(crate) async fn read() -> Result<Self> {
+        let content = tokio::fs::read_to_string(PATH)
+            .await
+            .with_context(|| format!("failed to read {PATH}"))?;
+        toml::from_str(&content).context("failed to parse config")
     }
 }

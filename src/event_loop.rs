@@ -1,5 +1,5 @@
 use crate::{
-    clip::Clip, handshake::Handshake, map_of_streams::MapOfStreams, store::Store,
+    clip::Clip, config::Config, handshake::Handshake, map_of_streams::MapOfStreams, store::Store,
     stream_id::StreamId,
 };
 use anyhow::Result;
@@ -9,7 +9,7 @@ use tokio_websockets::Message;
 
 pub(crate) struct EventLoop {
     listener: TcpListener,
-    token: &'static str,
+    config: Config,
 
     store: Store,
 
@@ -17,10 +17,10 @@ pub(crate) struct EventLoop {
 }
 
 impl EventLoop {
-    pub(crate) fn new(listener: TcpListener, token: &'static str) -> Self {
+    pub(crate) fn new(listener: TcpListener, config: Config) -> Self {
         Self {
             listener,
-            token,
+            config,
             store: Store::new(),
             connections: MapOfStreams::new(),
         }
@@ -46,7 +46,7 @@ impl EventLoop {
 
     async fn on_new_connection(&mut self, stream: TcpStream) -> Result<()> {
         let mut handshake = Handshake::parse(stream).await?;
-        handshake.authenticate(self.token).await?;
+        handshake.authenticate(&self.config.token).await?;
         let (id, mut ws) = handshake.accept().await?;
 
         if let Some(clip) = self.store.current() {
