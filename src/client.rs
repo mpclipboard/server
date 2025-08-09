@@ -19,17 +19,29 @@ impl Client {
         Self { name, ws }
     }
 
-    pub(crate) async fn send(&mut self, clip: &Clip) -> Result<()> {
+    pub(crate) async fn send_clip(&mut self, clip: &Clip) -> Result<()> {
         let json = serde_json::to_string(clip).context("failed to serialize clip")?;
         self.ws
             .send(Message::text(json))
             .await
             .context("failed to send clip")
     }
+
+    pub(crate) async fn send_ping(&mut self) -> Result<()> {
+        self.ws
+            .send(Message::ping(""))
+            .await
+            .context("failed to send ping")
+    }
+}
+
+pub(crate) enum ClientMessage {
+    Pong,
+    Clip(Clip),
 }
 
 impl Stream for Client {
-    type Item = Clip;
+    type Item = ClientMessage;
 
     fn poll_next(
         self: Pin<&mut Self>,
@@ -41,32 +53,35 @@ impl Stream for Client {
         let name = *this.name;
         let ws = this.ws.get_mut();
 
-        loop {
-            let Some(message) = ready!(ws.poll_next_unpin(cx)) else {
+        let Some(message) = ready!(ws.poll_next_unpin(cx)) else {
+            return Ready(None);
+        };
+
+        let message = match message {
+            Ok(message) => message,
+            Err(err) => {
+                log::error!("[{name}] communication error: {err:?}");
                 return Ready(None);
-            };
+            }
+        };
 
-            let message = match message {
-                Ok(message) => message,
-                Err(err) => {
-                    log::error!("[{name}] communication error: {err:?}");
-                    return Ready(None);
-                }
-            };
-
-            let Some(text) = message.as_text() else {
-                continue;
-            };
-
-            let clip = match serde_json::from_str::<Clip>(text) {
-                Ok(clip) => clip,
-                Err(err) => {
-                    log::error!("[{name}] communication error: {err:?}");
-                    return Ready(None);
-                }
-            };
-
-            return Ready(Some(clip));
+        if message.is_pong() {
+            return Ready(Some(ClientMessage::Pong));
         }
+
+        let Some(text) = message.as_text() else {
+            log::info!("got non-text message from client {name}: {message:?}");
+            return Ready(None);
+        };
+
+        let clip = match serde_json::from_str::<Clip>(text) {
+            Ok(clip) => clip,
+            Err(err) => {
+                log::error!("[{name}] communication error: {err:?}");
+                return Ready(None);
+            }
+        };
+
+        Ready(Some(ClientMessage::Clip(clip)))
     }
 }

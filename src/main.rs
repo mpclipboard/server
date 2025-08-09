@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
     let config = Config::read().await?;
     log::info!("Running with config {config:?}");
 
-    log::info!("Starting server on http://127.0.01:{}", config.port);
+    log::info!("Starting server on http://127.0.0.1:{}", config.port);
     let listener = TcpListener::bind(("127.0.0.1", config.port))
         .await
         .context("failed to bind")?;
