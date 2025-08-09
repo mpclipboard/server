@@ -5,10 +5,12 @@ use config::Config;
 use tokio::net::TcpListener;
 
 mod args;
+mod clip;
 mod config;
 mod event_loop;
 mod handshake;
 mod map_of_streams;
+mod store;
 mod stream_id;
 
 #[tokio::main(flavor = "current_thread")]

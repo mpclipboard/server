@@ -1,6 +1,5 @@
-use crate::stream_id::StreamId;
+use crate::{clip::Clip, stream_id::StreamId};
 use futures_util::{SinkExt, Stream};
-use mpclipboard_common::Clip;
 use std::{collections::HashMap, pin::Pin, task::Poll};
 use tokio::net::TcpStream;
 use tokio_websockets::{Message, WebSocketStream};
@@ -30,7 +29,7 @@ impl MapOfStreams {
         let mut ids_to_drop = vec![];
 
         for (id, conn) in self.map.iter_mut() {
-            if let Err(err) = conn.send(Message::from(&clip)).await {
+            if let Err(err) = conn.send(clip.to_message()).await {
                 log::error!("[{id}] failed to broadcast clip: {err:?}");
                 ids_to_drop.push(id.clone());
             }
