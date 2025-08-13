@@ -1,8 +1,10 @@
 use anyhow::{Result, ensure};
 
+const MAX_LEN: usize = 64;
+
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub(crate) struct Name {
-    bytes: [u8; 20],
+    bytes: [u8; MAX_LEN],
     len: usize,
 }
 
@@ -10,9 +12,9 @@ impl Name {
     pub(crate) fn new(name: String) -> Result<Self> {
         let len = name.len();
         let bytes = name.into_bytes();
-        ensure!(len <= 20, "Name is too long: {len} > 20");
+        ensure!(len <= MAX_LEN, "Name is too long: {len} > {MAX_LEN}");
 
-        let mut out = [0_u8; 20];
+        let mut out = [0_u8; MAX_LEN];
         for (idx, byte) in bytes.into_iter().enumerate() {
             out[idx] = byte;
         }
