@@ -1,3 +1,11 @@
+#![warn(missing_docs)]
+#![warn(trivial_casts, trivial_numeric_casts)]
+#![warn(unused_qualifications)]
+#![warn(deprecated_in_future)]
+#![warn(unused_lifetimes)]
+#![allow(clippy::boxed_local)]
+#![doc = include_str!("../README.md")]
+
 use crate::event_loop::EventLoop;
 use anyhow::{Context as _, Result};
 use config::Config;

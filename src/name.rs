@@ -2,6 +2,8 @@ use anyhow::{Result, ensure};
 
 const MAX_LEN: usize = 64;
 
+/// A trivially copyable connection name.
+/// Used to identify clients and do better logging.
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub(crate) struct Name {
     bytes: [u8; MAX_LEN],

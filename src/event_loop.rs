@@ -17,6 +17,11 @@ use tokio_stream::{StreamMap, StreamNotifyClose};
 use tokio_websockets::ServerBuilder;
 use uuid::Uuid;
 
+/// Central place of the server, an asynchronous infinite event loop.
+/// 1. Receives new connections
+/// 2. Performs authentication
+/// 3. If it succeeds, promotes "pending" connections to "clients"
+/// 4. Receives clips and from clients and broadcasts them to all other clients.
 pub(crate) struct EventLoop {
     listener: TcpListener,
     config: Config,
@@ -67,6 +72,9 @@ impl EventLoop {
         }
     }
 
+    /// 1. Accepts a single TCP connections
+    /// 2. Handles initial handshake, switches to WebSocket protocol
+    /// 3. Saves connection into `self.pending` and waits for auth request
     async fn accept(&mut self, stream: TcpStream) -> Result<()> {
         let (_, ws) = ServerBuilder::new()
             .accept(stream)
@@ -81,6 +89,9 @@ impl EventLoop {
         Ok(())
     }
 
+    /// Authenticates "pending" connection.
+    /// In case of a token mismatch disconnects.
+    /// If a token is valid "promotes" pending connection to a "client", saves in `self.clients`.
     async fn authenticate(&mut self, id: Uuid, auth: Option<Auth>) -> Result<()> {
         let mut conn = self
             .pending
@@ -114,6 +125,7 @@ impl EventLoop {
         Ok(())
     }
 
+    /// Handles new message from a "client". If it's a clip saves and broadcasts it.
     async fn process_new_message(&mut self, name: Name, message: ClientMessage) {
         match message {
             ClientMessage::Pong => {}
