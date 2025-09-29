@@ -24,3 +24,29 @@ cargo build --release
 ```
 
 Additionally, there's a [`debian/mpclipboard-server.service`](/debian/mpclipboard-server.service) systemd service if you need it.
+
+### Running in Docker
+
+We provide a Docker image on ghcr.io (GitHub container registry).
+
+First, you need a `config.toml` file:
+
+```toml
+host = "0.0.0.0"
+port = 3000
+token = "s3cr3t"
+```
+
+Then:
+
+1. optionally enable logging
+2. specify port mapping
+3. mount volume with a config
+
+```sh
+docker run \
+    -e RUST_LOG=trace
+    -p 3000:3000 \
+    -v ./config.toml:/etc/mpclipboard-server/config.toml:ro \
+    ghcr.io/mpclipboard/server:latest
+```
