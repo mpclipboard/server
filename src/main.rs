@@ -26,8 +26,14 @@ async fn main() -> Result<()> {
     let config = Config::read().await?;
     log::info!("Running with config {config:?}");
 
-    log::info!("Starting server on http://127.0.0.1:{}", config.port);
-    let listener = TcpListener::bind(("127.0.0.1", config.port))
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.unwrap();
+        println!("Received interrupt, exiting...");
+        std::process::exit(1);
+    });
+
+    log::info!("Starting server on http://{}:{}", config.host, config.port);
+    let listener = TcpListener::bind((config.host.as_str(), config.port))
         .await
         .context("failed to bind")?;
 

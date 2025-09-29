@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Config {
+    pub(crate) host: String,
     pub(crate) port: u16,
     pub(crate) token: String,
 }
@@ -10,6 +11,7 @@ pub(crate) struct Config {
 impl std::fmt::Debug for Config {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Config")
+            .field("host", &self.host)
             .field("port", &self.port)
             .field("token", &"*****")
             .finish()
