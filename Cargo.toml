@@ -15,7 +15,7 @@ futures-util = { version = "0.3", features = ["sink"] }
 uuid = { version = "1", features = ["v4"] }
 log = "0.4"
 toml = "0.9"
-tokio-websockets = { version = "0.12", features = [
+tokio-websockets = { version = "0.13", features = [
     "server",
     "ring",
     "fastrand",
