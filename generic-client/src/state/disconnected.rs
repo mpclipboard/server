@@ -34,6 +34,10 @@ impl Disconnected {
 
         let fd = rustix::net::socket(domain, SocketType::STREAM, None).context("socket()")?;
 
+        #[cfg(target_os = "macos")]
+        rustix::net::sockopt::set_socket_nosigpipe(&fd, true)
+            .context("setsockopt(SO_NOSIGPIPE)")?;
+
         let flags = rustix::io::fcntl_getfd(&fd).context("F_GETFD()")?;
         rustix::io::fcntl_setfd(&fd, flags | FdFlags::CLOEXEC).context("F_SETFD(FD_CLOEXEC)")?;
 
