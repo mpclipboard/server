@@ -40,16 +40,17 @@ impl MPClipboard {
     /// Returns an error if OS-specific event loop (epoll/kqueue) returns an error
     pub fn read(&mut self) -> Result<Option<Output>> {
         let event = self.event_loop.read()?;
+        let mut result = None;
 
         if let Some((readable, writable)) = event.ws {
-            return Ok(self.state.transition(readable, writable));
+            result = self.state.transition(readable, writable);
         }
 
         if event.timer {
-            return Ok(self.state.tick());
+            result = self.state.tick();
         }
 
-        Ok(None)
+        Ok(result)
     }
 
     /// Pushes a new text Clip with provided content.

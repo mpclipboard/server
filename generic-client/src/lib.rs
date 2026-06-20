@@ -12,6 +12,7 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::redundant_pub_crate)]
+#![allow(clippy::useless_let_if_seq)]
 #![doc = include_str!("../README.md")]
 
 pub use config::Config;
