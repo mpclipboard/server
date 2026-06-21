@@ -1,17 +1,23 @@
-# configuration is either "Debug" or "Release"
+# Builds. An argument is either "Debug" or "Release"
 [macos]
+[arg('configuration', pattern='Debug|Release')]
 build configuration:
     xcodebuild -configuration {{configuration}}
+
+# Runs pre-build app. An argument is either "Debug" or "Release"
 [macos]
+[arg('configuration', pattern='Debug|Release')]
 run configuration:
     ./build/{{configuration}}/mpclipboard.app/Contents/MacOS/mpclipboard
 
+# Re-builds everything in "Debug" mode and launches
 [macos]
 dev:
     cd ../generic-client && cargo build
     @just build Debug
     @just run Debug
 
+# Builds a release and places it at given "out" argument
 [macos]
 release out:
     cd ../generic-client && cargo build --release
@@ -26,17 +32,19 @@ release out:
 
     mv build/Release/mpclipboard.dmg {{out}}
 
+# Removes build artifacts
 clean:
     rm -rf build
     rm -f mpclipboard.app.zip
 
+# Schedules build on CI
 upload version ref="master":
     gh workflow run release-macos --ref {{ref}} -f version={{version}}
 
 baseicon := '../icon_512x512.png'
 assetsdir := 'mpclipboard/Assets.xcassets'
 
-generate-imageset-variant rgb density size outpath:
+_generate-imageset-variant rgb density size outpath:
     magick {{baseicon}} \
         -density {{density}} \
         -resize {{size}} \
@@ -46,14 +54,14 @@ generate-imageset-variant rgb density size outpath:
         -colorize 100% \
         {{outpath}}
 
-generate-imageset name rgb:
+_generate-imageset name rgb:
     mkdir -p {{assetsdir}}/{{name}}.imageset
 
-    @just generate-imageset-variant "{{rgb}}" 72  24x24 {{assetsdir}}/{{name}}.imageset/{{name}}.png
-    @just generate-imageset-variant "{{rgb}}" 144 48x48 {{assetsdir}}/{{name}}.imageset/{{name}}@2x.png
-    @just generate-imageset-variant "{{rgb}}" 216 72x72 {{assetsdir}}/{{name}}.imageset/{{name}}@3x.png
+    @just _generate-imageset-variant "{{rgb}}" 72  24x24 {{assetsdir}}/{{name}}.imageset/{{name}}.png
+    @just _generate-imageset-variant "{{rgb}}" 144 48x48 {{assetsdir}}/{{name}}.imageset/{{name}}@2x.png
+    @just _generate-imageset-variant "{{rgb}}" 216 72x72 {{assetsdir}}/{{name}}.imageset/{{name}}@3x.png
 
-generate-iconset rgb:
+_generate-iconset rgb:
     magick {{baseicon}} \
         -resize 32x32 \
         -alpha set \
@@ -62,9 +70,10 @@ generate-iconset rgb:
         -colorize 100% \
         {{assetsdir}}/AppIcon.appiconset/icon-32x32.png
 
+# Generates all image/icon resources
 generate-all-resources:
-    @just generate-imageset green  "rgb(23, 199, 23)"
-    @just generate-imageset red    "rgb(195, 40, 40)"
-    @just generate-imageset yellow "rgb(236, 223, 41)"
+    @just _generate-imageset green  "rgb(23, 199, 23)"
+    @just _generate-imageset red    "rgb(195, 40, 40)"
+    @just _generate-imageset yellow "rgb(236, 223, 41)"
 
     @just generate-iconset "rgb(55, 54, 46)"
