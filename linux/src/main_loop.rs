@@ -1,12 +1,7 @@
-use std::time::Duration;
-
-use crate::{
-    clipboard::{LocalReader, LocalWriter},
-    mpclipboard::MPClipboardStream,
-    tray::Tray,
-};
+use crate::{clipboard::AsyncExtDataControlStream, mpclipboard::MPClipboardStream, tray::Tray};
 use anyhow::{Context as _, Result};
 use mpclipboard_generic_client::Output;
+use std::time::Duration;
 use tokio::{
     signal::unix::{Signal, SignalKind},
     time::timeout,
@@ -17,7 +12,7 @@ pub(crate) struct MainLoop {
     token: CancellationToken,
     mpclipboard: MPClipboardStream,
     tray: Tray,
-    clipboard: LocalReader,
+    clipboard: AsyncExtDataControlStream,
     sigterm: Signal,
     sigint: Signal,
 }
@@ -27,7 +22,7 @@ impl MainLoop {
         let token = CancellationToken::new();
         let mpclipboard = MPClipboardStream::new()?;
         let tray = Tray::spawn(token.clone()).await?;
-        let clipboard = LocalReader::spawn(token.clone());
+        let clipboard = AsyncExtDataControlStream::new()?;
         let sigterm = tokio::signal::unix::signal(SignalKind::terminate())
             .context("failed to construct SIGTERM handler")?;
         let sigint = tokio::signal::unix::signal(SignalKind::interrupt())
@@ -47,11 +42,13 @@ impl MainLoop {
         loop {
             tokio::select! {
                 output = self.mpclipboard.read() => {
-                    self.on_output_from_mpclipboard(output).await;
+                    self.on_output_from_mpclipboard(output?).await?;
                 }
 
-                Some(text) = self.clipboard.recv() => {
-                    self.on_text_from_local_clipboard(text).await?;
+                text = self.clipboard.drain() => {
+                    if let Some(text) = text? {
+                        self.on_text_from_local_clipboard(text).await?;
+                    }
                 }
 
                 _ = self.sigterm.recv() => self.on_signal("SIGTERM"),
@@ -68,15 +65,8 @@ impl MainLoop {
         Ok(())
     }
 
-    async fn on_output_from_mpclipboard(&self, output: Result<Option<Output>>) {
-        let output = match output {
-            Ok(Some(output)) => output,
-            Ok(None) => return,
-            Err(err) => {
-                log::error!("{err:?}");
-                return;
-            }
-        };
+    async fn on_output_from_mpclipboard(&mut self, output: Option<Output>) -> Result<()> {
+        let Some(output) = output else { return Ok(()) };
 
         match output {
             Output::ConnectivityChanged { connectivity } => {
@@ -86,10 +76,12 @@ impl MainLoop {
 
             Output::NewText { text } => {
                 log::info!(target: "MPClipboard", "new clip {text:?}");
-                LocalWriter::write(&text);
+                self.clipboard.offer_text(text.clone())?;
                 self.tray.push_received(&text).await;
             }
         }
+
+        Ok(())
     }
 
     async fn on_text_from_local_clipboard(&mut self, text: String) -> Result<()> {
@@ -111,12 +103,6 @@ impl MainLoop {
             .is_err()
         {
             log::warn!("Tray shutdown timed out after 5 seconds");
-        }
-        if timeout(Duration::from_secs(5), self.clipboard.wait())
-            .await
-            .is_err()
-        {
-            log::warn!("LocalReader shutdown timed out after 5 seconds");
         }
     }
 }
