@@ -1,21 +1,17 @@
 import Cocoa
 
-class Tray {
-    var redImage: NSImage? = NSImage(named: "red")
-    var greenImage: NSImage? = NSImage(named: "green")
-    var yellowImage: NSImage? = NSImage(named: "yellow")
+final class Tray {
+    private let redImage: NSImage? = NSImage(named: "red")
+    private let greenImage: NSImage? = NSImage(named: "green")
+    private let yellowImage: NSImage? = NSImage(named: "yellow")
 
-    var statusItem: NSStatusItem
-    var trayButton: NSStatusBarButton?
+    private let statusItem: NSStatusItem
 
-    static let MAX_ITEMS_COUNT: Int = 5 // 4 clips + Quit
+    private static let maxItemsCount: Int = 5 // 4 clips + Quit
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let button = statusItem.button {
-            button.image = redImage
-            trayButton = button
-        }
+        statusItem.button?.image = redImage
 
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(AppDelegate.quit), keyEquivalent: "q"))
@@ -23,7 +19,7 @@ class Tray {
     }
 
     func setConnectivity(_ connectivity: Connectivity) {
-        trayButton?.image =
+        statusItem.button?.image =
             switch connectivity {
             case .connected:
                 greenImage
@@ -42,16 +38,16 @@ class Tray {
         push("R \(text)")
     }
 
-    func push(_ text: String) {
+    private func push(_ text: String) {
         guard let menu = statusItem.menu else {
-            return;
+            return
         }
 
-        while menu.items.count >= Tray.MAX_ITEMS_COUNT {
+        while menu.items.count >= Tray.maxItemsCount {
             menu.items.remove(at: menu.items.count - 2)
         }
 
-        let item = NSMenuItem(title: text, action: nil, keyEquivalent: "");
+        let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
         item.isEnabled = false
         menu.insertItem(item, at: 0)
     }

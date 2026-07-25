@@ -1,14 +1,14 @@
 import Cocoa
 
-class Clipboard {
-    var pasteboard: NSPasteboard = NSPasteboard.general
-    var lastChangeCount: Int
+final class Clipboard {
+    private let pasteboard: NSPasteboard = NSPasteboard.general
+    private var lastChangeCount: Int
 
     init() {
         lastChangeCount = pasteboard.changeCount
     }
 
-    func isChanged() -> Bool {
+    private func isChanged() -> Bool {
         let newChangeCount = pasteboard.changeCount
         if newChangeCount == lastChangeCount {
             return false
@@ -17,12 +17,8 @@ class Clipboard {
         return true
     }
 
-    func pollOnce() -> String? {
-        if !isChanged() {
-            return nil
-        }
-
-        return pasteboard.string(forType: .string)
+    private func pollOnce() -> String? {
+        isChanged() ? pasteboard.string(forType: .string) : nil
     }
 
     func startPolling(onCopy: @escaping (String) -> Void) -> Timer {

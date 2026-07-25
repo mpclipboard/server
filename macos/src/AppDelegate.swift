@@ -1,14 +1,14 @@
 import Cocoa
 import UserNotifications
 
-class AppDelegate: NSObject, NSApplicationDelegate {
-    var mpclipboard: MPClipboard?
-    var fdwatcher: FDWatcher?
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let mpclipboard: MPClipboard = MPClipboard()
+    private var mpclipboardSource: DispatchSourceRead?
 
-    var clipboard: Clipboard = Clipboard()
-    var clipboardTimer: Timer?
+    private let clipboard: Clipboard = Clipboard()
+    private var clipboardTimer: Timer?
 
-    var tray: Tray = Tray()
+    private let tray: Tray = Tray()
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         ProcessInfo.processInfo.disableAutomaticTermination("MPClipboard runs continuously as a menu bar clipboard sync agent")
@@ -27,57 +27,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        mpclipboard = MPClipboard()
-        guard let fd = mpclipboard?.fd() else {
-            fatalError("can't get FD")
+        let source = DispatchSource.makeReadSource(fileDescriptor: mpclipboard.fd(), queue: .global())
+        source.setEventHandler { [weak self] in
+            self?.readMPClipboard()
         }
-
-        fdwatcher = FDWatcher(fd, onReadable: {
-            guard let output = self.mpclipboard?.read() else {
-                return
-            }
-
-            DispatchQueue.main.async {
-                switch output {
-                case .connectivityChanged(let connectivity):
-                    self.tray.setConnectivity(connectivity)
-                case .newText(let text):
-                    self.clipboard.writeText(text)
-                    self.tray.pushReceived(text)
-                    self.showNotification(text)
-                case .error:
-                    fatalError("MPClipboard return error from .read()")
-                }
-            }
-        })
+        source.resume()
+        mpclipboardSource = source
 
         clipboardTimer = clipboard.startPolling(onCopy: { text in
-            guard let push_result = self.mpclipboard?.pushText(text) else {
-                return;
-            }
-
-            switch push_result {
+            switch self.mpclipboard.pushText(text) {
             case .droppedAsStale:
-                return;
+                return
             case .error:
                 fatalError("MPClipboard return error from .push_text()")
             case .sent:
                 self.tray.pushSent(text)
             }
         })
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
-    }
-
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        fputs("MPClipboard applicationShouldTerminate called\n", stderr)
-        return .terminateNow
-    }
-
-    func applicationWillTerminate(_ notification: Notification) {
-        fputs("MPClipboard applicationWillTerminate called\n", stderr)
     }
 
     @objc
@@ -87,13 +53,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(self)
     }
 
-    func showNotification(_ text: String) {
+    private func readMPClipboard() {
+        guard let output = mpclipboard.read() else {
+            return
+        }
+
+        DispatchQueue.main.async {
+            switch output {
+            case .connectivityChanged(let connectivity):
+                self.tray.setConnectivity(connectivity)
+            case .newText(let text):
+                self.clipboard.writeText(text)
+                self.tray.pushReceived(text)
+                self.showNotification(text)
+            case .error:
+                fatalError("MPClipboard return error from .read()")
+            }
+        }
+    }
+
+    private func showNotification(_ text: String) {
         let content = UNMutableNotificationContent()
         content.title = "MPClipboard"
         content.body = text
 
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
                 fputs("Error showing notification: \(error)", stderr)
