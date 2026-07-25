@@ -2,6 +2,7 @@
 [macos]
 [arg('configuration', pattern='Debug|Release')]
 build configuration:
+    @just generate-all-resources
     xcodegen generate
     xcodebuild -configuration {{configuration}}
 
@@ -47,6 +48,9 @@ upload version ref="master":
 baseicon := '../icon_512x512.png'
 assetsdir := 'mpclipboard/Assets.xcassets'
 
+_generate-asset-contents-json:
+    ./scripts/generate-asset-contents-json.py
+
 _generate-imageset-variant rgb density size outpath:
     magick {{baseicon}} \
         -density {{density}} \
@@ -77,6 +81,7 @@ _generate-iconset rgb:
 
 # Generates all image/icon resources
 generate-all-resources:
+    @just _generate-asset-contents-json
     @just _generate-imageset green  "rgb(23, 199, 23)"
     @just _generate-imageset red    "rgb(195, 40, 40)"
     @just _generate-imageset yellow "rgb(236, 223, 41)"
