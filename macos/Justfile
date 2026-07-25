@@ -46,7 +46,7 @@ upload version ref="master":
     gh workflow run release-macos --ref {{ref}} -f version={{version}}
 
 baseicon := '../icon_512x512.png'
-assetsdir := 'mpclipboard/Assets.xcassets'
+assetsdir := 'src/Assets.xcassets'
 
 _generate-asset-contents-json:
     ./scripts/generate-asset-contents-json.py

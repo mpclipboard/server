@@ -6,7 +6,7 @@ targets:
     platform: macOS
     deploymentTarget: "15.0"
     sources:
-      - mpclipboard
+      - src
     settings:
       base:
         ARCHS: arm64
@@ -14,7 +14,7 @@ targets:
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: org.mpclipboard.MPClipboard
-        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/mpclipboard/BridgingHeader.h
+        SWIFT_OBJC_BRIDGING_HEADER: $(SRCROOT)/src/BridgingHeader.h
         SWIFT_VERSION: 5.0
       configs:
         Debug:
