@@ -1,12 +1,9 @@
 import Cocoa
-import Carbon
-import SwiftUI
 import UserNotifications
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var mpclipboard: MPClipboard?
     var fdwatcher: FDWatcher?
-    var mpclipboardTimer: Timer?
 
     var clipboard: Clipboard = Clipboard()
     var clipboardTimer: Timer?
@@ -19,7 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Hide Dock icon
         NSApp.setActivationPolicy(.accessory)
 
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge]) { granted, error in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { granted, error in
             if granted {
                 print("Got permission to send notifications")
             } else {
@@ -30,7 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        mpclipboard = MPClipboard(self)
+        mpclipboard = MPClipboard()
         guard let fd = mpclipboard?.fd() else {
             fatalError("can't get FD")
         }
@@ -87,7 +84,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func quit() {
         print("Quitting...")
         self.clipboardTimer?.invalidate()
-        self.mpclipboardTimer?.invalidate()
         NSApp.terminate(self)
     }
 
@@ -96,9 +92,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         content.title = "MPClipboard"
         content.body = text
 
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger)
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
 
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {

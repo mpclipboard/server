@@ -56,9 +56,3 @@ class Tray {
         menu.insertItem(item, at: 0)
     }
 }
-
-func currentThreadID() -> UInt64 {
-    var tid: UInt64 = 0
-    pthread_threadid_np(nil, &tid)
-    return tid
-}

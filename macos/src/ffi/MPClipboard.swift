@@ -2,9 +2,8 @@ import Cocoa
 
 class MPClipboard {
     var mpclipboard: OpaquePointer?
-    var app: NSApplicationDelegate
 
-    init(_ app: NSApplicationDelegate) {
+    init() {
         mpclipboard_init()
 
 #if DEBUG
@@ -14,8 +13,6 @@ class MPClipboard {
         puts("Release build, using config from XDG dir")
         var option = MPCLIPBOARD_CONFIG_READ_OPTION_FROM_XDG_CONFIG_DIR
 #endif
-
-        self.app = app
 
         guard let config = mpclipboard_config_read(option) else {
             fatalError("NULL config")
