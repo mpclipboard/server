@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 
-ASSETS_DIR = Path("src/Assets.xcassets")
+ASSETS_DIR = Path("Assets.xcassets")
 INFO = {"author": "xcode", "version": 1}
 IMAGESETS = ("green", "red", "yellow")
 APPICON_SLOTS = (
