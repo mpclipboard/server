@@ -55,6 +55,7 @@ _generate-imageset-variant rgb density size outpath:
         -channel rgba \
         -fill "{{rgb}}" \
         -colorize 100% \
+        -strip \
         {{outpath}}
 
 _generate-imageset name rgb:
@@ -71,6 +72,7 @@ _generate-iconset rgb:
         -channel rgba \
         -fill "{{rgb}}" \
         -colorize 100% \
+        -strip \
         {{assetsdir}}/AppIcon.appiconset/icon-32x32.png
 
 # Generates all image/icon resources
@@ -79,4 +81,4 @@ generate-all-resources:
     @just _generate-imageset red    "rgb(195, 40, 40)"
     @just _generate-imageset yellow "rgb(236, 223, 41)"
 
-    @just generate-iconset "rgb(55, 54, 46)"
+    @just _generate-iconset "rgb(55, 54, 46)"
