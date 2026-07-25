@@ -2,6 +2,7 @@
 [macos]
 [arg('configuration', pattern='Debug|Release')]
 build configuration:
+    xcodegen generate
     xcodebuild -configuration {{configuration}}
 
 # Runs pre-build app. An argument is either "Debug" or "Release"
@@ -35,6 +36,8 @@ release out:
 # Removes build artifacts
 clean:
     rm -rf build
+    rm -rf dmg-root
+    rm -rf mpclipboard.xcodeproj
     rm -f mpclipboard.app.zip
 
 # Schedules build on CI
