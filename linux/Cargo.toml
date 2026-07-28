@@ -10,9 +10,9 @@ authors = ["Ilya Bylich"]
 ksni = { version = "0.3" }
 log = "0.4"
 anyhow = "1"
-tokio = { version = "1.46.1", features = ["full"] }
-tokio-util = "0.7.15"
-wl-data-control-protocol-evt = { version = "1.0.0" }
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+wl-data-control-protocol-evt = { version = "1" }
 
 mpclipboard-generic-client = { path = "../generic-client" }
 
