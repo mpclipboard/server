@@ -182,7 +182,7 @@ Java_dev_mpclipboard_android_Ffi_mpclipboard_1read(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_dev_mpclipboard_android_Ffi_mpclipboard_1push_1text2(
+Java_dev_mpclipboard_android_Ffi_mpclipboard_1push_1text(
     JNIEnv *env,
     jclass clazz,
     jlong client_ptr,
@@ -201,7 +201,7 @@ Java_dev_mpclipboard_android_Ffi_mpclipboard_1push_1text2(
         return JNI_FALSE;
     }
 
-    mpclipboard_PushResult result = mpclipboard_push_text2(
+    mpclipboard_PushResult result = mpclipboard_push_text(
         (mpclipboard_MPClipboard *) (intptr_t) client_ptr,
         (const char *) bytes,
         (size_t) len
@@ -214,10 +214,10 @@ Java_dev_mpclipboard_android_Ffi_mpclipboard_1push_1text2(
         case MPCLIPBOARD_PUSH_RESULT_DROPPED_AS_STALE:
             return JNI_FALSE;
         case MPCLIPBOARD_PUSH_RESULT_ERROR:
-            throw_runtime_exception(env, "mpclipboard_push_text2 failed");
+            throw_runtime_exception(env, "mpclipboard_push_text failed");
             return JNI_FALSE;
         default:
-            throw_runtime_exception(env, "mpclipboard_push_text2 returned unknown result");
+            throw_runtime_exception(env, "mpclipboard_push_text returned unknown result");
             return JNI_FALSE;
     }
 }

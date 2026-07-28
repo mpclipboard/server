@@ -147,19 +147,12 @@ int32_t mpclipboard_get_fd(mpclipboard_MPClipboard *mpclipboard);
 mpclipboard_Output mpclipboard_read(mpclipboard_MPClipboard *mpclipboard);
 
 /**
- * Pushes text from NULL-terminated C-style string,
- * returns false if given text isn't new
- */
-mpclipboard_PushResult mpclipboard_push_text1(mpclipboard_MPClipboard *mpclipboard,
-                                              const char *text);
-
-/**
  * Pushes text from pointer + length
  * returns false if given text isn't new
  */
-mpclipboard_PushResult mpclipboard_push_text2(mpclipboard_MPClipboard *mpclipboard,
-                                              const char *ptr,
-                                              size_t len);
+mpclipboard_PushResult mpclipboard_push_text(mpclipboard_MPClipboard *mpclipboard,
+                                             const char *ptr,
+                                             size_t len);
 
 /**
  * Drops an instance of `MPClipboard`, frees memory, closes files

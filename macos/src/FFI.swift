@@ -97,8 +97,8 @@ final class MPClipboard {
     }
 
     func pushText(_ text: String) -> PushResult {
-        text.withCString { ptr in
-            PushResult.from(mpclipboard_push_text1(handle, ptr))
+        text.utf8CString.withUnsafeBufferPointer { bytes in
+            PushResult.from(mpclipboard_push_text(handle, bytes.baseAddress, bytes.count - 1))
         }
     }
 

@@ -53,5 +53,5 @@ internal object Ffi {
     external fun mpclipboard_read(clientPtr: Long): NativeOutput?
 
     @JvmStatic
-    external fun mpclipboard_push_text2(clientPtr: Long, text: ByteArray): Boolean
+    external fun mpclipboard_push_text(clientPtr: Long, text: ByteArray): Boolean
 }

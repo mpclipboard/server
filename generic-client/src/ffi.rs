@@ -133,30 +133,10 @@ pub enum PushResult {
     Error,
 }
 
-/// Pushes text from NULL-terminated C-style string,
-/// returns false if given text isn't new
-#[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_push_text1(
-    mpclipboard: *mut MPClipboard,
-    text: *const c_char,
-) -> PushResult {
-    let mpclipboard = unsafe { &mut *mpclipboard };
-    let text = cstring_to_string(text);
-
-    match mpclipboard.push_text(text) {
-        Ok(true) => PushResult::Sent,
-        Ok(false) => PushResult::DroppedAsStale,
-        Err(err) => {
-            log::error!("{err:?}");
-            PushResult::Error
-        }
-    }
-}
-
 /// Pushes text from pointer + length
 /// returns false if given text isn't new
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_push_text2(
+pub extern "C" fn mpclipboard_push_text(
     mpclipboard: *mut MPClipboard,
     ptr: *const c_char,
     len: usize,

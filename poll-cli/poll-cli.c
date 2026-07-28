@@ -72,7 +72,7 @@ void push_stdin_line(mpclipboard_MPClipboard *mpclipboard) {
     len--;
   }
 
-  mpclipboard_push_text2(mpclipboard, buffer, len);
+  mpclipboard_push_text(mpclipboard, buffer, len);
 }
 
 void print_connectivity(mpclipboard_Connectivity connectivity) {
