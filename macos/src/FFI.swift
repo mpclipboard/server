@@ -85,11 +85,7 @@ final class MPClipboard {
             fatalError("NULL config")
         }
 
-        guard let context = mpclipboard_context_new(config) else {
-            fatalError("NULL context")
-        }
-
-        guard let handle = mpclipboard_new(context) else {
+        guard let handle = mpclipboard_new(config) else {
             fatalError("NULL mpclipboard")
         }
 

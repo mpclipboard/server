@@ -15,8 +15,8 @@ API is purely IO-driven:
 
 ### Usage in Rust
 
-```rust
-use mpclipboard_generic_client::{Config, Context, MPClipboard, Output, ConfigReadOption};
+```rust,ignore
+use mpclipboard_generic_client::{Config, ConfigReadOption, MPClipboard, Output};
 
 // first initialize a library (this configures a logger and TLS)
 MPClipboard::init()?;
@@ -28,12 +28,8 @@ let config = Config::read(ConfigReadOption::FromLocalFile)?;
 // or by reading it from $XDG_CONFIG_HOME/mpclipboard/config.toml
 let config = Config::read(ConfigReadOption::FromXdgConfigDir)?;
 
-// then initialize execution context (which internally sets up an event loop and resolves DNS)
-let context = Context::new(config)?;
-// NOTE: starting from here no errors can be returned
-
 // create an instance of MPClipboard
-let mut mpclipboard = MPClipboard::new(context);
+let mut mpclipboard = MPClipboard::new(config);
 // and take its file descriptor
 let fd = mpclipboard.as_raw_fd()
 
@@ -61,10 +57,9 @@ mpclipboard_init();
 mpclipboard_Config *config = mpclipboard_config_read(MPCLIPBOARD_CONFIG_READ_OPTION_FROM_LOCAL_FILE);
 assert(config);
 
-mpclipboard_Context *ctx = mpclipboard_context_new(config);
-assert(ctx);
+mpclipboard_MPClipboard *mpclipboard = mpclipboard_new(config);
+assert(mpclipboard);
 
-mpclipboard_MPClipboard *mpclipboard = mpclipboard_new(ctx);
 int fd = mpclipboard_get_fd(mpclipboard);
 
 for (;;) {

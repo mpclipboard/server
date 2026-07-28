@@ -1,4 +1,4 @@
-use crate::{Config, ConfigReadOption, Connectivity, Context, MPClipboard, Output};
+use crate::{Config, ConfigReadOption, Connectivity, MPClipboard, Output};
 use std::{ffi::c_char, os::fd::AsRawFd};
 
 macro_rules! try_or_null {
@@ -58,25 +58,16 @@ pub extern "C" fn mpclipboard_config_new(
     Box::leak(Box::new(config))
 }
 
-/// Constructs a new `MPClipboard` context.
+/// Constructs a new `MPClipboard`.
 /// Consumes config.
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_context_new(config: *mut Config) -> *mut Context {
+pub extern "C" fn mpclipboard_new(config: *mut Config) -> *mut MPClipboard {
     let config = unsafe { *Box::from_raw(config) };
-    let context = try_or_null!(Context::new(config));
-    Box::leak(Box::new(context))
+    let mpclipboard = try_or_null!(MPClipboard::new(config));
+    Box::leak(Box::new(mpclipboard))
 }
 
-/// Constructs a new `MPClipboard`.
-/// Consumes context.
-#[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_new(context: *mut Context) -> *mut MPClipboard {
-    let context = unsafe { *Box::from_raw(context) };
-    Box::leak(Box::new(MPClipboard::new(context)))
-}
-
-/// Constructs a new `MPClipboard`.
-/// Consumes context.
+/// Returns the file descriptor for a given `MPClipboard` instance.
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_get_fd(mpclipboard: *mut MPClipboard) -> i32 {
     let mpclipboard = unsafe { &mut *mpclipboard };

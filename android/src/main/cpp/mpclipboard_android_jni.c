@@ -112,25 +112,14 @@ Java_dev_mpclipboard_android_Ffi_mpclipboard_1config_1new(
 }
 
 JNIEXPORT jlong JNICALL
-Java_dev_mpclipboard_android_Ffi_mpclipboard_1context_1new(
+Java_dev_mpclipboard_android_Ffi_mpclipboard_1new(
     JNIEnv *env,
     jclass clazz,
     jlong config_ptr
 ) {
     (void) env;
     (void) clazz;
-    return (jlong) (intptr_t) mpclipboard_context_new((mpclipboard_Config *) (intptr_t) config_ptr);
-}
-
-JNIEXPORT jlong JNICALL
-Java_dev_mpclipboard_android_Ffi_mpclipboard_1new(
-    JNIEnv *env,
-    jclass clazz,
-    jlong context_ptr
-) {
-    (void) env;
-    (void) clazz;
-    return (jlong) (intptr_t) mpclipboard_new((mpclipboard_Context *) (intptr_t) context_ptr);
+    return (jlong) (intptr_t) mpclipboard_new((mpclipboard_Config *) (intptr_t) config_ptr);
 }
 
 JNIEXPORT jint JNICALL

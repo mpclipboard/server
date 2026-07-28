@@ -2,7 +2,7 @@ use crate::timer::Timer;
 use anyhow::{Context, Result, bail};
 use polling::{Event, Events, PollMode, Poller};
 use std::{
-    os::fd::{AsRawFd, BorrowedFd, OwnedFd},
+    os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd},
     rc::Rc,
 };
 
@@ -98,6 +98,12 @@ impl EventLoop {
         }
 
         Ok(out)
+    }
+}
+
+impl AsFd for EventLoop {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.poller.as_fd()
     }
 }
 

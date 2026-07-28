@@ -28,10 +28,9 @@ int main() {
       mpclipboard_config_read(MPCLIPBOARD_CONFIG_READ_OPTION_FROM_LOCAL_FILE);
   assert(config != NULL);
 
-  mpclipboard_Context *ctx = mpclipboard_context_new(config);
-  assert(ctx != NULL);
+  mpclipboard_MPClipboard *mpclipboard = mpclipboard_new(config);
+  assert(mpclipboard != NULL);
 
-  mpclipboard_MPClipboard *mpclipboard = mpclipboard_new(ctx);
   int mpclipboard_fd = mpclipboard_get_fd(mpclipboard);
 
   while (true) {
@@ -104,8 +103,12 @@ void print_output(mpclipboard_Output output) {
            NC);
     break;
   }
-  case MPCLIPBOARD_OUTPUT_INTERNAL: {
+  case MPCLIPBOARD_OUTPUT_IGNORE: {
     break;
+  }
+  case MPCLIPBOARD_OUTPUT_ERROR: {
+    fprintf(stderr, "mpclipboard_read() returned an error\n");
+    abort();
   }
   }
 }

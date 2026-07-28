@@ -60,11 +60,6 @@ typedef enum {
 typedef struct mpclipboard_Config mpclipboard_Config;
 
 /**
- * Execution context of `MPClipboard`, once constructed nothing can fail
- */
-typedef struct mpclipboard_Context mpclipboard_Context;
-
-/**
  * The main entrypoint
  */
 typedef struct mpclipboard_MPClipboard mpclipboard_MPClipboard;
@@ -136,20 +131,13 @@ mpclipboard_Config *mpclipboard_config_read(mpclipboard_ConfigReadOption option)
 mpclipboard_Config *mpclipboard_config_new(const char *uri, const char *token, const char *name);
 
 /**
- * Constructs a new `MPClipboard` context.
+ * Constructs a new `MPClipboard`.
  * Consumes config.
  */
-mpclipboard_Context *mpclipboard_context_new(mpclipboard_Config *config);
+mpclipboard_MPClipboard *mpclipboard_new(mpclipboard_Config *config);
 
 /**
- * Constructs a new `MPClipboard`.
- * Consumes context.
- */
-mpclipboard_MPClipboard *mpclipboard_new(mpclipboard_Context *context);
-
-/**
- * Constructs a new `MPClipboard`.
- * Consumes context.
+ * Returns the file descriptor for a given `MPClipboard` instance.
  */
 int32_t mpclipboard_get_fd(mpclipboard_MPClipboard *mpclipboard);
 

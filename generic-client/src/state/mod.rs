@@ -10,7 +10,7 @@ use establishing::Establishing;
 use handshaking::Handshaking;
 use ready::Ready;
 
-use crate::{Connectivity, Context, Output, event_loop::EventLoop};
+use crate::{Connectivity, Output, context::Context, event_loop::EventLoop};
 use anyhow::Result;
 use clip::Clip;
 use std::{os::fd::AsRawFd, rc::Rc};

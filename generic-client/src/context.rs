@@ -16,17 +16,7 @@ pub struct Context {
 }
 
 impl Context {
-    /// Constructs a new context
-    /// Internally builds TLS connector and epoll/kqueue event loop.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    ///
-    /// 1. TLS can't be configured
-    /// 2. DNS name of the remote server can't be resolved
-    /// 3. OS-specific event loop (epoll/kqueue) can't be initialized
-    pub fn new(config: Config) -> Result<Self> {
+    pub(crate) fn new(config: Config) -> Result<Self> {
         let enable_tls = config.enable_tls()?;
         let tls = TLS::new(enable_tls)?;
 

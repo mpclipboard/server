@@ -18,7 +18,6 @@
 pub use config::Config;
 pub use config::ConfigReadOption;
 pub use connectivity::Connectivity;
-pub use context::Context;
 pub use mpclipboard::MPClipboard;
 pub use output::Output;
 

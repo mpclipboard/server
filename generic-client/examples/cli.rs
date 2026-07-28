@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use mpclipboard_generic_client::{Config, Context, MPClipboard, Output};
+use mpclipboard_generic_client::{Config, MPClipboard, Output};
 use polling::{Event, Events, PollMode, Poller};
 use std::os::fd::AsRawFd as _;
 
@@ -27,9 +27,8 @@ fn main() -> Result<()> {
         .unwrap_or_else(|_| print_help_and_exit());
 
     let config = Config::new(&uri, token, name)?;
-    let context = Context::new(config)?;
 
-    let mut mpclipboard = MPClipboard::new(context);
+    let mut mpclipboard = MPClipboard::new(config)?;
 
     let poller = setup_external_event_loop(mpclipboard.as_raw_fd())?;
     let mut tick = 0;

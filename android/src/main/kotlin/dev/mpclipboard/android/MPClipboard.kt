@@ -39,12 +39,7 @@ class MPClipboard private constructor(
                 return null
             }
 
-            val context = Ffi.mpclipboard_context_new(config)
-            if (context == 0L) {
-                return null
-            }
-
-            val mpclipboard = Ffi.mpclipboard_new(context)
+            val mpclipboard = Ffi.mpclipboard_new(config)
             if (mpclipboard == 0L) {
                 return null
             }

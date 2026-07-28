@@ -13,11 +13,7 @@ impl Logger {
             #[cfg(not(debug_assertions))]
             let max_level = LevelFilter::Error;
 
-            android_logger::init_once(
-                Config::default()
-                    .with_tag("RUST")
-                    .with_max_level(max_level),
-            );
+            android_logger::init_once(Config::default().with_tag("RUST").with_max_level(max_level));
         }
 
         #[cfg(not(target_os = "android"))]

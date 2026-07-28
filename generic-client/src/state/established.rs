@@ -1,5 +1,6 @@
 use crate::{
-    Connectivity, Context, Output,
+    Connectivity, Output,
+    context::Context,
     state::{Connected, Handshaking, Ready},
 };
 use anyhow::{Context as _, Result};

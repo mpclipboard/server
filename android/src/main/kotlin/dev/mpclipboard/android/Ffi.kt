@@ -43,10 +43,8 @@ internal object Ffi {
     external fun mpclipboard_config_new(uri: ByteArray, token: ByteArray, name: ByteArray): Long
 
     @JvmStatic
-    external fun mpclipboard_context_new(configPtr: Long): Long
-
     @JvmStatic
-    external fun mpclipboard_new(contextPtr: Long): Long
+    external fun mpclipboard_new(configPtr: Long): Long
 
     @JvmStatic
     external fun mpclipboard_get_fd(clientPtr: Long): Int

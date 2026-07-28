@@ -1,4 +1,6 @@
-use crate::{Context, Output, event_loop::EventLoop, logger::Logger, state::State, tls::TLS};
+use crate::{
+    Config, Output, context::Context, event_loop::EventLoop, logger::Logger, state::State, tls::TLS,
+};
 use anyhow::Result;
 use clip::Clip;
 use std::{
@@ -26,11 +28,20 @@ impl MPClipboard {
     }
 
     /// Constructs a new instance
-    pub fn new(context: Context) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    ///
+    /// 1. TLS can't be configured
+    /// 2. DNS name of the remote server can't be resolved
+    /// 3. OS-specific event loop (epoll/kqueue) can't be initialized
+    pub fn new(config: Config) -> Result<Self> {
+        let context = Context::new(config)?;
         let event_loop = Rc::clone(&context.event_loop);
         let state = State::start(context, Rc::clone(&event_loop));
 
-        Self { event_loop, state }
+        Ok(Self { event_loop, state })
     }
 
     /// Reads data from WebSocket connection, returns Output
@@ -72,6 +83,6 @@ impl AsRawFd for MPClipboard {
 
 impl AsFd for MPClipboard {
     fn as_fd(&self) -> BorrowedFd<'_> {
-        unsafe { BorrowedFd::borrow_raw(self.as_raw_fd()) }
+        self.event_loop.as_fd()
     }
 }

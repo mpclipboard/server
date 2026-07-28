@@ -1,19 +1,24 @@
+# Generate bindings.h
 cbindgen:
     cbindgen --output bindings.h
 
 ws := 'ws://127.0.0.1:3000'
 secret := 'sekret'
 
+# Runs a "cli" example using a local server
 dev number:
     RUST_LOG=info cargo run --example cli -- {{ws}} {{secret}} client-{{number}} hello-from-client-{{number}}
 
+# Runs a "cli" example with valgrind
 valgrind:
     cargo build --example cli
     valgrind --leak-check=full target/debug/examples/cli
 
+# Builds the library
 build:
     cargo build
 
+# Builds release library for Adnroid, places it at given `out` argument
 release-android out:
     cargo ndk -t arm64-v8a build --release
     mv target/aarch64-linux-android/release/libmpclipboard_generic_client.a {{out}}

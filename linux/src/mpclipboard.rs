@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use mpclipboard_generic_client::{Config, ConfigReadOption, Context, MPClipboard, Output};
+use mpclipboard_generic_client::{Config, ConfigReadOption, MPClipboard, Output};
 use std::os::fd::AsRawFd;
 use tokio::io::unix::AsyncFd;
 
@@ -21,9 +21,8 @@ impl MPClipboardStream {
 
     pub(crate) fn new() -> Result<Self> {
         let config = Config::read(CONFIG_READ_OPTION)?;
-        let context = Context::new(config)?;
 
-        let mpclipboard = MPClipboard::new(context);
+        let mpclipboard = MPClipboard::new(config)?;
         let fd = AsyncFd::new(mpclipboard.as_raw_fd()).context("failed to construct AsyncFd")?;
 
         Ok(Self { mpclipboard, fd })

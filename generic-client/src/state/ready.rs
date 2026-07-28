@@ -1,4 +1,4 @@
-use crate::{Context, Output, state::Connected};
+use crate::{Output, context::Context, state::Connected};
 use anyhow::Result;
 use clip::Clip;
 use std::{io::ErrorKind, net::TcpStream, os::fd::AsRawFd};
