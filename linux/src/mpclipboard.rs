@@ -1,11 +1,9 @@
-use anyhow::{Context as _, Result};
-use mpclipboard_generic_client::{Config, ConfigReadOption, MPClipboard, Output};
-use std::os::fd::AsRawFd;
-use tokio::io::unix::AsyncFd;
+use anyhow::Result;
+use mpclipboard_generic_client::{Config, ConfigReadOption, Output};
+use rustix::event::{PollFd, PollFlags};
 
-pub(crate) struct MPClipboardStream {
-    mpclipboard: MPClipboard,
-    fd: AsyncFd<i32>,
+pub(crate) struct MPClipboard {
+    mpclipboard: mpclipboard_generic_client::MPClipboard,
 }
 
 const CONFIG_READ_OPTION: ConfigReadOption = if cfg!(debug_assertions) {
@@ -14,24 +12,23 @@ const CONFIG_READ_OPTION: ConfigReadOption = if cfg!(debug_assertions) {
     ConfigReadOption::FromXdgConfigDir
 };
 
-impl MPClipboardStream {
+impl MPClipboard {
     pub(crate) fn init() -> Result<()> {
-        MPClipboard::init()
+        mpclipboard_generic_client::MPClipboard::init()
     }
 
     pub(crate) fn new() -> Result<Self> {
         let config = Config::read(CONFIG_READ_OPTION)?;
+        let mpclipboard = mpclipboard_generic_client::MPClipboard::new(config)?;
 
-        let mpclipboard = MPClipboard::new(config)?;
-        let fd = AsyncFd::new(mpclipboard.as_raw_fd()).context("failed to construct AsyncFd")?;
-
-        Ok(Self { mpclipboard, fd })
+        Ok(Self { mpclipboard })
     }
 
-    pub(crate) async fn read(&mut self) -> Result<Option<Output>> {
-        let mut guard = self.fd.readable().await.context("failed to wait")?;
-        guard.clear_ready();
+    pub(crate) fn as_pollfd(&self) -> PollFd<'_> {
+        PollFd::new(&self.mpclipboard, PollFlags::IN)
+    }
 
+    pub(crate) fn read(&mut self) -> Result<Option<Output>> {
         self.mpclipboard.read()
     }
 

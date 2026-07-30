@@ -7,12 +7,11 @@ description = "MPClipboard client for Linux"
 authors = ["Ilya Bylich"]
 
 [dependencies]
-ksni = { version = "0.3" }
 log = "0.4"
 anyhow = "1"
-tokio = { version = "1", features = ["full"] }
-tokio-util = "0.7"
 wl-data-control-protocol-evt = { version = "1" }
+mini-sansio-dbus = { version = "6.0" }
+rustix = { version = "1.1", features = ["event", "net"] }
 
 mpclipboard-generic-client = { path = "../generic-client" }
 
