@@ -1,3 +1,4 @@
-uri = "ws://127.0.0.1:3000"
+main-url = "http://127.0.0.1:3000"
+heartbeat-url = "http://127.0.0.1:3010"
 token = "sekret"
-name = "generic-client"
+id = "generic-client"

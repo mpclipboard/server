@@ -2,12 +2,9 @@
 cbindgen:
     cbindgen --output bindings.h
 
-ws := 'ws://127.0.0.1:3000'
-secret := 'sekret'
-
 # Runs a "cli" example using a local server
-dev number:
-    RUST_LOG=info cargo run --example cli -- {{ws}} {{secret}} client-{{number}} hello-from-client-{{number}}
+dev id log="info":
+    RUST_LOG_STYLE=always RUST_LOG={{log}} cargo run --example cli -- {{id}}
 
 # Runs a "cli" example with valgrind
 valgrind:

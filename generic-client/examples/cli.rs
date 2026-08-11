@@ -1,149 +1,80 @@
-use anyhow::{Context as _, Result};
-use mpclipboard_generic_client::{Config, MPClipboard, Output};
-use polling::{Event, Events, PollMode, Poller};
-use std::os::fd::AsRawFd as _;
+use anyhow::Result;
+use mpclipboard_generic_client::{MPClipboard, Output};
+use mpclipboard_shared::event_loop::{EventLoop, EventLoopResult, Wants};
+use std::{
+    io::BufRead,
+    os::fd::{AsRawFd as _, BorrowedFd},
+};
 
 const HELP: &str = "Usage:
-cargo run --example cli -- <URI> <token> <name> <periodically sent text>
+cargo run --example cli -- <periodically sent text>
 
 Example:
 
-RUST_LOG=info cargo run --example cli -- ws://127.0.0.1:3000 sekret user-no-42
+RUST_LOG=info cargo run --example cli -- <id>
 ";
 fn print_help_and_exit() -> ! {
-    log::error!("{HELP}");
+    eprintln!("{HELP}");
     std::process::exit(1);
 }
-
-const MPCLIPBOARD: u32 = 1;
-const TIMER: u32 = 2;
 
 fn main() -> Result<()> {
     MPClipboard::init()?;
 
-    let [_, uri, token, name, flood] = std::env::args()
+    let [_, id] = std::env::args()
         .collect::<Vec<_>>()
         .try_into()
         .unwrap_or_else(|_| print_help_and_exit());
 
-    let config = Config::new(&uri, token, name)?;
+    let mut mpclipboard = MPClipboard::new_with_local_config_and_id_override(&id)?;
+    let mut stdin = std::io::stdin().lock();
 
-    let mut mpclipboard = MPClipboard::new(config)?;
-
-    let poller = setup_external_event_loop(mpclipboard.as_raw_fd())?;
-    let mut tick = 0;
+    let mut event_loop = EventLoop::new()?;
+    event_loop.sync(
+        Some((
+            unsafe { BorrowedFd::borrow_raw(mpclipboard.as_raw_fd()) },
+            Wants::Read,
+        )),
+        Some((
+            unsafe { BorrowedFd::borrow_raw(stdin.as_raw_fd()) },
+            Wants::Read,
+        )),
+    )?;
 
     loop {
-        let mut events = Events::new();
-        poller.wait(&mut events, None).context("failed to poll")?;
+        let EventLoopResult {
+            time: _,
+            fd1: mpclipboard_polled,
+            fd2: stdin_polled,
+        } = event_loop.wait(None)?;
 
-        for event in events.iter() {
-            match event.key as u32 {
-                MPCLIPBOARD => {
-                    if let Some(output) = mpclipboard.read()? {
-                        match output {
-                            Output::ConnectivityChanged { connectivity } => {
-                                log::info!("{connectivity:?}")
-                            }
-                            Output::NewText { text } => log::info!("[{text}]"),
+        if let Some((readable, writable, err)) = mpclipboard_polled {
+            assert!(!err);
+            assert!(!writable);
+
+            if readable {
+                if let Some(output) = mpclipboard.read()? {
+                    match output {
+                        Output::ConnectivityChanged { connectivity } => {
+                            println!("{connectivity:?}")
                         }
+                        Output::NewText { text } => println!("[{text}]"),
                     }
                 }
-                TIMER => {
-                    tick += 1;
-                    drain_timer();
+            }
+        }
+        if let Some((readable, writable, err)) = stdin_polled {
+            assert!(!err);
+            assert!(!writable);
 
-                    if tick % 2 == 0 {
-                        let _ = mpclipboard.push_text(format!("{flood}-tick-{tick}"))?;
-                        // OR
-                        // mpclipboard.push_binary(vec![1, 2, 3]);
-                    }
+            if readable {
+                let mut line = String::new();
+                stdin.read_line(&mut line)?;
+                let line = line.trim();
+                if !line.is_empty() {
+                    mpclipboard.push_text(line)?;
                 }
-                other => unreachable!("unknown event key: {other}"),
             }
         }
     }
-}
-
-#[cfg(target_os = "linux")]
-static mut TIMERFD: i32 = -1;
-
-fn setup_external_event_loop(mpclipboard_fd: i32) -> Result<Poller> {
-    let poller = Poller::new()?;
-    (unsafe {
-        poller.add_with_mode(
-            mpclipboard_fd,
-            Event::new(MPCLIPBOARD as usize, true, false),
-            PollMode::Level,
-        )
-    })?;
-
-    #[cfg(target_os = "macos")]
-    {
-        use polling::os::kqueue::{PollerKqueueExt, Timer};
-        use std::time::Duration;
-        poller.add_filter(
-            Timer {
-                id: TIMER as usize,
-                timeout: Duration::from_secs(1),
-            },
-            TIMER as usize,
-            PollMode::Level,
-        )?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        use rustix::time::{
-            Itimerspec, TimerfdClockId, TimerfdFlags, TimerfdTimerFlags, Timespec, timerfd_create,
-            timerfd_settime,
-        };
-        use std::os::fd::IntoRawFd;
-
-        let timerfd = timerfd_create(TimerfdClockId::Monotonic, TimerfdFlags::NONBLOCK)
-            .expect("bug: failed to create timerfd");
-
-        timerfd_settime(
-            &timerfd,
-            TimerfdTimerFlags::ABSTIME,
-            &Itimerspec {
-                it_interval: Timespec {
-                    tv_sec: 1,
-                    tv_nsec: 0,
-                },
-                it_value: Timespec {
-                    tv_sec: 1,
-                    tv_nsec: 0,
-                },
-            },
-        )
-        .expect("bug: failed to configure timer");
-
-        unsafe {
-            poller
-                .add_with_mode(
-                    &timerfd,
-                    Event::new(TIMER as usize, true, false),
-                    PollMode::Level,
-                )
-                .expect("bug: failed to add timer to epoll")
-        };
-
-        unsafe { TIMERFD = timerfd.into_raw_fd() }
-    }
-
-    Ok(poller)
-}
-
-#[cfg(target_os = "macos")]
-fn drain_timer() {}
-
-#[cfg(target_os = "linux")]
-fn drain_timer() {
-    use std::os::fd::BorrowedFd;
-
-    let mut buf = [0_u8; 8];
-    let bytes_read = rustix::io::read(unsafe { BorrowedFd::borrow_raw(TIMERFD) }, &mut buf)
-        .expect("bug: failed to read from timer");
-    assert_eq!(bytes_read, 8);
 }

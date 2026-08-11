@@ -1,4 +1,3 @@
-#![warn(missing_docs)]
 #![warn(trivial_casts)]
 #![warn(trivial_numeric_casts)]
 #![warn(unused_qualifications)]
@@ -6,56 +5,39 @@
 #![warn(unused_lifetimes)]
 #![warn(clippy::unwrap_used)]
 #![warn(clippy::expect_used)]
-#![warn(clippy::panic)]
 #![warn(clippy::indexing_slicing)]
 #![warn(clippy::arithmetic_side_effects)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
-#![allow(clippy::redundant_pub_crate)]
-#![allow(clippy::future_not_send)]
+#![warn(clippy::std_instead_of_alloc)]
+#![warn(clippy::std_instead_of_core)]
 #![doc = include_str!("../README.md")]
 
-use crate::{config::Config, state::State};
-use anyhow::{Context as _, Result};
-use futures_util::StreamExt;
-use std::time::Duration;
-use tokio::net::TcpListener;
+use anyhow::Result;
 
-mod auth;
-mod client;
 mod config;
-mod state;
-mod store;
+use config::Config;
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
-    env_logger::Builder::from_default_env()
-        .write_style(env_logger::WriteStyle::Always)
-        .init();
+mod as_poll_fd;
+mod client;
+mod fd_set;
+mod heartbeat;
+mod pre_sink;
+mod pre_source;
+mod reaper;
+mod revents;
+mod tcp_listener;
 
-    let Config { port, token } = Config::read().await?;
+mod main_loop;
+use main_loop::MainLoop;
 
-    log::info!("Starting server on http://127.0.0.1:{port}");
-    let listener = TcpListener::bind(("127.0.0.1", port))
-        .await
-        .context("failed to bind")?;
+fn main() -> Result<()> {
+    env_logger::init();
+    let config = Config::read()?;
 
-    let mut state = State::new(token);
-    let mut timer = tokio::time::interval(Duration::from_secs(1));
+    let mut main_loop = MainLoop::new(config)?;
 
     loop {
-        tokio::select! {
-            Ok((stream, remote_addr)) = listener.accept() => {
-                state.register(stream, remote_addr).await;
-            }
-
-            Some((name, clip)) = state.next() => {
-                state.broadcast(name, clip).await;
-            }
-
-            _ = timer.tick() => {
-                state.ping().await;
-            }
-        }
+        main_loop.poll_and_process_events();
     }
 }

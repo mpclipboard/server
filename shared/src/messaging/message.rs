@@ -1,0 +1,159 @@
+use crate::{Decode, Encode, NonEmptyInlineString};
+use std::{
+    num::NonZeroUsize,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+const MAX_TEXT_LEN: usize = 200;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Message {
+    pub(crate) string: NonEmptyInlineString<MAX_TEXT_LEN>,
+    pub(crate) timestamp: u128,
+}
+
+impl Message {
+    pub const BYTESIZE: usize = size_of::<u8>() + size_of::<u128>() + MAX_TEXT_LEN;
+
+    pub fn new(string: NonEmptyInlineString<MAX_TEXT_LEN>) -> Self {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| unreachable!("Time went backwards"))
+            .as_nanos();
+
+        Self { string, timestamp }
+    }
+
+    pub fn text_as_bytes(&self) -> &[u8] {
+        self.string.as_bytes()
+    }
+
+    pub fn text_as_str(&self) -> &str {
+        self.string.as_str()
+    }
+
+    pub fn timestamp(&self) -> u128 {
+        self.timestamp
+    }
+}
+
+impl core::fmt::Debug for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Text({:?} at {})", self.text_as_str(), self.timestamp)
+    }
+}
+
+impl Encode<{ Message::BYTESIZE }> for Message {
+    fn encode(&self, buf: &mut [u8; Message::BYTESIZE]) {
+        let text = self.text_as_bytes();
+        let len = u8::try_from(text.len()).unwrap_or_else(|_| unreachable!());
+
+        let mut pos = 0_usize;
+
+        let start = pos;
+        let end = start
+            .checked_add(size_of::<u8>())
+            .unwrap_or_else(|| unreachable!());
+        buf.get_mut(start..end)
+            .unwrap_or_else(|| unreachable!())
+            .copy_from_slice(&len.to_le_bytes());
+        pos = end;
+
+        let start = pos;
+        let end = start
+            .checked_add(size_of::<u128>())
+            .unwrap_or_else(|| unreachable!());
+        buf.get_mut(start..end)
+            .unwrap_or_else(|| unreachable!())
+            .copy_from_slice(&self.timestamp.to_le_bytes());
+        pos = end;
+
+        let start = pos;
+        let end = start
+            .checked_add(len as usize)
+            .unwrap_or_else(|| unreachable!());
+        buf.get_mut(start..end)
+            .unwrap_or_else(|| unreachable!())
+            .copy_from_slice(text);
+    }
+}
+
+impl Decode<{ Message::BYTESIZE }> for Message {
+    type Error = MessageDecodeError;
+
+    fn decode(buf: &[u8; Message::BYTESIZE]) -> Result<Self, Self::Error> {
+        let (length, buf) = buf.split_first().unwrap_or_else(|| unreachable!());
+        let length =
+            NonZeroUsize::new(usize::from(*length)).ok_or(MessageDecodeError::MalformedLength)?;
+
+        if length.get() > MAX_TEXT_LEN {
+            return Err(MessageDecodeError::MalformedLength);
+        }
+
+        let (timestamp, buf) = buf
+            .split_first_chunk::<{ size_of::<u128>() }>()
+            .unwrap_or_else(|| unreachable!());
+        let timestamp = u128::from_le_bytes(*timestamp);
+
+        let buf = buf.get(..length.get()).unwrap_or_else(|| unreachable!());
+        let mut text = [0; MAX_TEXT_LEN];
+        text.get_mut(..length.get())
+            .unwrap_or_else(|| unreachable!())
+            .copy_from_slice(buf);
+
+        let string =
+            core::str::from_utf8(text.get(..length.get()).unwrap_or_else(|| unreachable!()))
+                .map_err(|_| MessageDecodeError::NonUtf8Text)?;
+        let string = NonEmptyInlineString::new(string).unwrap_or_else(|| unreachable!());
+
+        Ok(Self { string, timestamp })
+    }
+}
+
+#[expect(missing_docs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageDecodeError {
+    MalformedLength,
+    NonUtf8Text,
+}
+
+impl core::fmt::Display for MessageDecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::MalformedLength => write!(f, "MalformedLength"),
+            Self::NonUtf8Text => write!(f, "NonUtf8Text"),
+        }
+    }
+}
+
+impl core::error::Error for MessageDecodeError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type S = NonEmptyInlineString<MAX_TEXT_LEN>;
+
+    #[test]
+    fn test_encode_decode() {
+        let text = Message::new(S::new(&"a".repeat(10)).unwrap());
+
+        let mut buf = [0; Message::BYTESIZE];
+        text.encode(&mut buf);
+
+        assert_eq!(Message::decode(&buf), Ok(text));
+    }
+
+    #[test]
+    fn test_decode_invalid() {
+        assert_eq!(
+            Message::decode(&[b'\xFF'; Message::BYTESIZE]),
+            Err(MessageDecodeError::MalformedLength)
+        );
+
+        assert_eq!(
+            Message::decode(&[b'\xC8'; Message::BYTESIZE]),
+            Err(MessageDecodeError::NonUtf8Text)
+        );
+    }
+}

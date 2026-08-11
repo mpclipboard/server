@@ -1,0 +1,13 @@
+[package]
+name = "mpclipboard-shared"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rustix = { version = "1", features = ["time", "fs"] }
+boml = "2"
+log = "0.4"
+anyhow = "1.0.104"
+
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+epoll = "4.4"
