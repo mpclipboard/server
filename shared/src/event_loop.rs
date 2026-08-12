@@ -1,10 +1,9 @@
 #[cfg(any(target_os = "linux", target_os = "android"))]
-use crate::Timerfd;
-use anyhow::Result;
-use std::{
-    os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd},
-    time::Duration,
-};
+use crate::{Timerfd, Wants};
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use std::os::fd::RawFd;
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
+use std::time::Duration;
 
 pub struct EventLoop {
     #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -13,35 +12,6 @@ pub struct EventLoop {
     timer: Timerfd,
 
     fd: FdState,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Wants {
-    Read,
-    Write,
-    ReadWrite,
-}
-
-impl Wants {
-    pub fn merge(self, other: Self) -> Self {
-        let read = self.wants_read() || other.wants_read();
-        let write = self.wants_write() || other.wants_write();
-
-        match (read, write) {
-            (true, true) => Self::ReadWrite,
-            (true, false) => Self::Read,
-            (false, true) => Self::Write,
-            (false, false) => unreachable!("Wants always wants at least one event"),
-        }
-    }
-
-    fn wants_read(self) -> bool {
-        matches!(self, Self::Read | Self::ReadWrite)
-    }
-
-    fn wants_write(self) -> bool {
-        matches!(self, Self::Write | Self::ReadWrite)
-    }
 }
 
 #[derive(Debug)]
@@ -55,19 +25,17 @@ impl EventLoop {
     const FD_ID: u64 = 2;
 
     #[cfg(target_os = "macos")]
-    pub fn new() -> Result<Self> {
+    pub fn new() -> Result<Self, EventLoopError> {
         todo!("kqueue backend");
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    pub fn new() -> Result<Self> {
-        use anyhow::Context;
-
-        let epoll_fd = epoll::create(true).context("bug: failed to instantiate epoll")?;
+    pub fn new() -> std::io::Result<Self> {
+        let epoll_fd = epoll::create(true)?;
 
         let mut this = Self {
             epoll_fd,
-            timer: Timerfd::new(),
+            timer: Timerfd::new()?,
             fd: FdState::new(),
         };
         this.add_timer()?;
@@ -76,12 +44,15 @@ impl EventLoop {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn sync(&mut self, _what: Option<(BorrowedFd<'static>, Wants)>) -> Result<()> {
+    pub fn sync(
+        &mut self,
+        _what: Option<(BorrowedFd<'static>, Wants)>,
+    ) -> Result<(), EventLoopError> {
         todo!("kqueue backend");
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    pub fn sync(&mut self, wants: Option<(BorrowedFd<'static>, Wants)>) -> Result<()> {
+    pub fn sync(&mut self, wants: Option<(BorrowedFd<'static>, Wants)>) -> std::io::Result<()> {
         match self.fd.transition(wants) {
             Diff::Add { fd, wants } => {
                 self.add(fd, Self::FD_ID, wants)?;
@@ -107,15 +78,14 @@ impl EventLoop {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn wait(&mut self, _timeout: Option<Duration>) -> Result<EventLoopResult> {
+    pub fn wait(&mut self, _timeout: Option<Duration>) -> Result<EventLoopResult, EventLoopError> {
         todo!("kqueue backend");
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    pub fn wait(&mut self, timeout: Option<Duration>) -> Result<EventLoopResult> {
+    pub fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<EventLoopResult> {
         let mut events = [epoll::Event::new(epoll::Events::empty(), 0); 4];
-        let len = epoll::wait(self.epoll_fd, Self::timeout_to_ms(timeout), &mut events)
-            .map_err(|err| anyhow::anyhow!("bug: failed to read from epoll: {err:?}"))?;
+        let len = epoll::wait(self.epoll_fd, Self::timeout_to_ms(timeout), &mut events)?;
 
         let mut out = EventLoopResult {
             time: None,
@@ -125,7 +95,7 @@ impl EventLoop {
         for event in events.iter().take(len) {
             match event.data {
                 Self::TIMER_ID => {
-                    let time = self.drain_timer();
+                    let time = self.drain_timer()?;
                     out.time = Some(time);
                 }
 
@@ -143,7 +113,8 @@ impl EventLoop {
                 }
 
                 _ => {
-                    anyhow::bail!("bug: unknown event: {event:?}")
+                    let id = event.data;
+                    return Err(std::io::Error::other(format!("unknown event {id}",)));
                 }
             }
         }
@@ -152,7 +123,7 @@ impl EventLoop {
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    fn add(&self, fd: BorrowedFd<'static>, id: u64, wants: Wants) -> Result<()> {
+    fn add(&self, fd: BorrowedFd<'static>, id: u64, wants: Wants) -> std::io::Result<()> {
         epoll::ctl(
             self.epoll_fd,
             epoll::ControlOptions::EPOLL_CTL_ADD,
@@ -163,7 +134,7 @@ impl EventLoop {
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    fn delete(&self, fd: BorrowedFd<'static>) -> Result<()> {
+    fn delete(&self, fd: BorrowedFd<'static>) -> std::io::Result<()> {
         let _ = epoll::ctl(
             self.epoll_fd,
             epoll::ControlOptions::EPOLL_CTL_DEL,
@@ -174,7 +145,7 @@ impl EventLoop {
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    fn modify(&self, fd: BorrowedFd<'static>, id: u64, wants: Wants) -> Result<()> {
+    fn modify(&self, fd: BorrowedFd<'static>, id: u64, wants: Wants) -> std::io::Result<()> {
         epoll::ctl(
             self.epoll_fd,
             epoll::ControlOptions::EPOLL_CTL_MOD,
@@ -226,36 +197,35 @@ impl Drop for EventLoop {
 }
 
 trait AddTimer {
-    fn add_timer(&mut self) -> Result<()>;
-    fn drain_timer(&mut self) -> u64;
+    fn add_timer(&mut self) -> std::io::Result<()>;
+    fn drain_timer(&mut self) -> std::io::Result<u64>;
 }
 
 #[cfg(target_os = "macos")]
 impl AddTimer for EventLoop {
-    fn add_timer(&mut self) -> Result<()> {
+    fn add_timer(&mut self) -> Result<(), EventLoopError> {
         todo!("kqueue backend");
     }
 
     #[cfg(target_os = "macos")]
-    fn drain_timer(&mut self) -> u64 {
+    fn drain_timer(&mut self) -> Result<u64, EventLoopError> {
         todo!("kqueue backend");
     }
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 impl AddTimer for EventLoop {
-    fn add_timer(&mut self) -> Result<()> {
+    fn add_timer(&mut self) -> std::io::Result<()> {
         epoll::ctl(
             self.epoll_fd,
             epoll::ControlOptions::EPOLL_CTL_ADD,
             self.timer.as_raw_fd(),
             epoll::Event::new(epoll::Events::EPOLLIN, Self::TIMER_ID),
-        )
-        .map_err(|err| anyhow::anyhow!("bug: failed to add timer to epoll: {err:?}"))?;
+        )?;
         Ok(())
     }
 
-    fn drain_timer(&mut self) -> u64 {
+    fn drain_timer(&mut self) -> std::io::Result<u64> {
         self.timer.read()
     }
 }

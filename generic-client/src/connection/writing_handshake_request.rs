@@ -2,15 +2,10 @@ use crate::{
     config::Config,
     connection::{
         ConnectionState, FREEZE_TIME_IN_SECS, disconnected::Disconnected,
-        reading_handshake_response::ReadingHandshakeResponse, stream::Stream,
+        maybe_tls_stream::MaybeTlsStream, reading_handshake_response::ReadingHandshakeResponse,
     },
 };
-use mpclipboard_shared::{
-    error,
-    event_loop::Wants,
-    handshake_request::{HandshakeRequest, HandshakeRequestWriter},
-    writer::WriterResult,
-};
+use mpclipboard_shared::{HandshakeRequest, HandshakeRequestWriter, Wants, error};
 use std::os::fd::{AsRawFd, BorrowedFd};
 
 #[derive(Debug, Clone, Copy)]
@@ -35,12 +30,13 @@ impl WritingHandshakeRequest {
         }
     }
 
-    pub(crate) fn wants(&self, stream: &Stream) -> Option<(BorrowedFd<'static>, Wants)> {
+    pub(crate) fn wants(&self, stream: &MaybeTlsStream) -> Option<(BorrowedFd<'static>, Wants)> {
         Some((self.fd, stream.wants(Wants::Write)))
     }
 
     pub(crate) fn disconnect_if_stuck(self, now: u64) -> ConnectionState {
         if now - self.last_activity_at > FREEZE_TIME_IN_SECS {
+            error!("Stuck in WritingHandshakeRequest, disconnecting...");
             self.disconnect(now).into()
         } else {
             self.into()
@@ -56,15 +52,15 @@ impl WritingHandshakeRequest {
         mut self,
         now: u64,
         _config: &Config,
-        stream: &mut Stream,
+        stream: &mut MaybeTlsStream,
     ) -> ConnectionState {
         match self.writer.write_to(stream, &self.fd) {
-            WriterResult::Done => ReadingHandshakeResponse::new(self.fd, now).into(),
-            WriterResult::StillPending => {
+            Ok(true) => ReadingHandshakeResponse::new(self.fd, now).into(),
+            Ok(false) => {
                 self.last_activity_at = now;
                 self.into()
             }
-            WriterResult::Died(err) => {
+            Err(err) => {
                 error!("write() failed: {err:?}");
                 self.disconnect(now)
             }

@@ -1,12 +1,12 @@
 use crate::{Connectivity, config::Config};
 use anyhow::Result;
-use mpclipboard_shared::{error, event_loop::Wants, info, message::Message};
+use mpclipboard_shared::{Message, Wants, error, info};
 use std::os::fd::BorrowedFd;
 
 mod helpers;
 
-mod stream;
-use stream::Stream;
+mod maybe_tls_stream;
+use maybe_tls_stream::MaybeTlsStream;
 
 mod disconnected;
 use disconnected::Disconnected;
@@ -77,7 +77,7 @@ impl_connection_state_from!(Connected);
 pub struct Connection {
     state: ConnectionState,
     config: Config,
-    stream: Stream,
+    stream: MaybeTlsStream,
 }
 
 impl Connection {
@@ -85,7 +85,7 @@ impl Connection {
         Ok(Self {
             state: ConnectionState::Disconnected(Disconnected::new(0)),
             config,
-            stream: Stream::empty(),
+            stream: MaybeTlsStream::empty(),
         })
     }
 
@@ -151,7 +151,7 @@ impl Connection {
     pub(crate) fn on_readable(&mut self, now: u64) -> Option<Message> {
         match self.state {
             ConnectionState::TlsHandshake(s) => {
-                self.with_stream(|stream, config| (s.advance(now, config, stream), None))
+                self.with_stream(|stream, config| (s.finish(now, config, stream), None))
             }
             ConnectionState::ReadingHandshakeResponse(s) => {
                 self.with_stream(|stream, _config| s.read(now, stream))
@@ -174,7 +174,7 @@ impl Connection {
                 self.transition(s.finish(now, &self.config, &self.stream));
             }
             ConnectionState::TlsHandshake(s) => {
-                self.with_stream(|stream, config| (s.advance(now, config, stream), None));
+                self.with_stream(|stream, config| (s.finish(now, config, stream), None));
             }
             ConnectionState::WritingHandshakeRequest(s) => {
                 self.with_stream(|stream, config| (s.write(now, config, stream), None));
@@ -215,7 +215,7 @@ impl Connection {
         self.state = next;
 
         if matches!(next, ConnectionState::Disconnected(_)) {
-            self.stream = Stream::empty();
+            self.stream = MaybeTlsStream::empty();
         }
 
         if prev.name() != next.name() {
@@ -229,7 +229,7 @@ impl Connection {
 
     fn with_stream(
         &mut self,
-        f: impl FnOnce(&mut Stream, &Config) -> (ConnectionState, Option<Message>),
+        f: impl FnOnce(&mut MaybeTlsStream, &Config) -> (ConnectionState, Option<Message>),
     ) -> Option<Message> {
         let (next, message) = f(&mut self.stream, &self.config);
         self.transition(next);

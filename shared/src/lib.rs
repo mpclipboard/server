@@ -13,16 +13,40 @@
 #![warn(clippy::std_instead_of_core)]
 #![doc = include_str!("../README.md")]
 
+mod config;
+pub use config::ConfigParser;
+
+mod http_lines_buffer;
 mod readbuf;
 mod writebuf;
 
-pub mod byte_stream;
-pub mod handshake_request;
-pub mod handshake_response;
-pub mod message;
-pub mod message_writer;
-pub mod reader;
-pub mod writer;
+mod http_lines_reader;
+mod reader;
+mod writer;
+
+mod byte_stream;
+pub use byte_stream::{ByteStream, PlainByteStream};
+
+mod handshake_request;
+pub use handshake_request::HandshakeRequest;
+
+mod handshake_request_reader;
+pub use handshake_request_reader::HandshakeRequestReader;
+
+mod handshake_request_writer;
+pub use handshake_request_writer::HandshakeRequestWriter;
+
+mod handshake_response;
+pub use handshake_response::{HandshakeResponseReader, HandshakeResponseWriter};
+
+mod message;
+pub use message::Message;
+
+mod message_reader;
+pub use message_reader::MessageReader;
+
+mod message_writer;
+pub use message_writer::MessageWriter;
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod timerfd;
@@ -50,16 +74,26 @@ pub(crate) const MIN_PADDING_LENGTH: usize = 1;
 mod non_empty_inline_string;
 pub use non_empty_inline_string::NonEmptyInlineString;
 
-pub mod config;
-pub mod event_loop;
-pub mod logger;
-pub mod revents;
-pub mod store;
-pub mod tcp_keep_alive;
-pub mod url;
+mod wants;
+pub use wants::Wants;
 
-mod http_lines_buffer;
-pub mod http_lines_reader;
+mod event_loop;
+pub use event_loop::{EventLoop, EventLoopResult};
+
+#[doc(hidden)]
+pub mod logger;
+
+mod revents;
+pub use revents::REvents;
+
+mod store;
+pub use store::Store;
+
+mod tcp_keep_alive;
+pub use tcp_keep_alive::enable_tcp_keep_alive;
+
+mod url;
+pub use url::Url;
 
 pub(crate) fn strip_prefix_ignore_ascii_case<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
     let (pre, post) = line.split_at_checked(prefix.len())?;

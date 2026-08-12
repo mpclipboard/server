@@ -80,13 +80,20 @@ impl core::fmt::Debug for Message {
 }
 
 impl Message {
-    pub fn decode(buf: &[u8; Self::BYTESIZE]) -> Result<Self, MessageDecodeError> {
+    pub(crate) fn decode(buf: &[u8; Self::BYTESIZE]) -> std::io::Result<Self> {
+        fn malformed_message_length_err() -> std::io::Error {
+            std::io::Error::other("malformed message length")
+        }
+        fn non_utf8_message_text_err() -> std::io::Error {
+            std::io::Error::other("non-utf8 message text")
+        }
+
         let (length, buf) = buf.split_first().unwrap_or_else(|| unreachable!());
         let length =
-            NonZeroUsize::new(usize::from(*length)).ok_or(MessageDecodeError::MalformedLength)?;
+            NonZeroUsize::new(usize::from(*length)).ok_or_else(malformed_message_length_err)?;
 
         if length.get() > MAX_TEXT_LEN {
-            return Err(MessageDecodeError::MalformedLength);
+            return Err(malformed_message_length_err());
         }
 
         let (timestamp, buf) = buf
@@ -102,30 +109,12 @@ impl Message {
 
         let string =
             core::str::from_utf8(text.get(..length.get()).unwrap_or_else(|| unreachable!()))
-                .map_err(|_| MessageDecodeError::NonUtf8Text)?;
+                .map_err(|_| non_utf8_message_text_err())?;
         let string = NonEmptyInlineString::new(string).unwrap_or_else(|| unreachable!());
 
         Ok(Self { string, timestamp })
     }
 }
-
-#[expect(missing_docs)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MessageDecodeError {
-    MalformedLength,
-    NonUtf8Text,
-}
-
-impl core::fmt::Display for MessageDecodeError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::MalformedLength => write!(f, "MalformedLength"),
-            Self::NonUtf8Text => write!(f, "NonUtf8Text"),
-        }
-    }
-}
-
-impl core::error::Error for MessageDecodeError {}
 
 #[cfg(test)]
 mod tests {
@@ -137,19 +126,23 @@ mod tests {
     fn test_encode_decode() {
         let text = Message::new(S::new(&"a".repeat(10)).unwrap());
 
-        assert_eq!(Message::decode(&text.encode()), Ok(text));
+        assert_eq!(Message::decode(&text.encode()).unwrap(), text);
     }
 
     #[test]
     fn test_decode_invalid() {
         assert_eq!(
-            Message::decode(&[b'\xFF'; Message::BYTESIZE]),
-            Err(MessageDecodeError::MalformedLength)
+            Message::decode(&[b'\xFF'; Message::BYTESIZE])
+                .unwrap_err()
+                .to_string(),
+            "malformed message length"
         );
 
         assert_eq!(
-            Message::decode(&[b'\xC8'; Message::BYTESIZE]),
-            Err(MessageDecodeError::NonUtf8Text)
+            Message::decode(&[b'\xC8'; Message::BYTESIZE])
+                .unwrap_err()
+                .to_string(),
+            "non-utf8 message text"
         );
     }
 }

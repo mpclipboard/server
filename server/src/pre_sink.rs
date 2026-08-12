@@ -1,8 +1,5 @@
 use crate::{as_poll_fd::AsPollFd, reaper::CanBeReaped};
-use mpclipboard_shared::{
-    ID, byte_stream::PlainByteStream, error, handshake_response::HandshakeResponseWriter,
-    revents::REvents, trace, writer::WriterResult,
-};
+use mpclipboard_shared::{HandshakeResponseWriter, ID, PlainByteStream, REvents, error, trace};
 use rustix::event::{PollFd, PollFlags};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 
@@ -15,7 +12,7 @@ pub struct PreSink {
 
 pub enum PreSinkResult {
     Died,
-    StillPending(PreSink),
+    Pending(PreSink),
     Done((ID, OwnedFd)),
 }
 
@@ -46,21 +43,21 @@ impl PreSink {
             trace!("{self} is writable");
 
             match self.writer.write_to(&mut PlainByteStream, &self.fd) {
-                WriterResult::Done => {
+                Ok(true) => {
                     return PreSinkResult::Done((self.id, self.fd));
                 }
-                WriterResult::StillPending => {
+                Ok(false) => {
                     self.last_activity_at = now;
-                    return PreSinkResult::StillPending(self);
+                    return PreSinkResult::Pending(self);
                 }
-                WriterResult::Died(err) => {
+                Err(err) => {
                     error!("{self} failed to write(): {err:?}");
                     return PreSinkResult::Died;
                 }
             }
         }
 
-        PreSinkResult::StillPending(self)
+        PreSinkResult::Pending(self)
     }
 }
 

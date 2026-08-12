@@ -1,6 +1,6 @@
 use anyhow::Result;
 use mpclipboard_generic_client::{MPClipboard, Output};
-use mpclipboard_shared::revents::REvents;
+use mpclipboard_shared::REvents;
 use rustix::event::{PollFd, PollFlags};
 use std::io::BufRead;
 

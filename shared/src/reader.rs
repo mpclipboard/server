@@ -1,8 +1,4 @@
-use crate::{
-    byte_stream::{ByteStream, ReadResult},
-    readbuf::Readbuf,
-    trace,
-};
+use crate::{byte_stream::ByteStream, readbuf::Readbuf, trace};
 use std::os::fd::AsFd;
 
 #[derive(Debug, Clone, Copy)]
@@ -17,12 +13,12 @@ impl<const N: usize> Reader<N> {
         }
     }
 
-    pub fn new_with_data(data: &[u8]) -> (Self, Option<ReaderResult<N>>) {
+    pub fn new_with_data(data: &[u8]) -> (Self, Option<[u8; N]>) {
         assert!(data.len() <= N);
 
         if data.len() == N {
             let buf = data.try_into().unwrap_or_else(|_| unreachable!());
-            return (Self::new(), Some(ReaderResult::Data(buf)));
+            return (Self::new(), Some(buf));
         }
 
         (
@@ -33,40 +29,21 @@ impl<const N: usize> Reader<N> {
         )
     }
 
-    pub fn read_from(&mut self, stream: &mut impl ByteStream, fd: &impl AsFd) -> ReaderResult<N> {
+    pub fn read_from(
+        &mut self,
+        stream: &mut impl ByteStream,
+        fd: &impl AsFd,
+    ) -> std::io::Result<Option<[u8; N]>> {
         loop {
-            match stream.read_bytes(fd, self.readbuf.remainder()) {
-                ReadResult::Data(len) => {
+            match stream.read_bytes(fd, self.readbuf.remainder())? {
+                Some(len) => {
                     trace!("received {len} bytes");
                     if let Some(buf) = self.readbuf.received(len) {
-                        return ReaderResult::Data(buf);
+                        return Ok(Some(buf));
                     }
                 }
-                ReadResult::Eof => return ReaderResult::Died(ReaderError::EOF),
-                ReadResult::WouldBlock => return ReaderResult::StillPending,
-                ReadResult::Err(err) => return ReaderResult::Died(ReaderError::Transport(err)),
+                None => return Ok(None),
             }
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum ReaderResult<const N: usize> {
-    Data([u8; N]),
-    StillPending,
-    Died(ReaderError),
-}
-
-pub enum ReaderError {
-    EOF,
-    Transport(anyhow::Error),
-}
-
-impl std::fmt::Debug for ReaderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::EOF => write!(f, "EOF"),
-            Self::Transport(err) => f.debug_tuple("Transport").field(err).finish(),
         }
     }
 }
@@ -74,11 +51,7 @@ impl std::fmt::Debug for ReaderError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        NonEmptyInlineString,
-        byte_stream::{ByteStream, WriteResult},
-        message::Message,
-    };
+    use crate::{NonEmptyInlineString, byte_stream::ByteStream, message::Message};
     use core::num::NonZeroUsize;
     use std::os::fd::AsFd;
 
@@ -87,9 +60,13 @@ mod tests {
     }
 
     impl ByteStream for Stream<'_> {
-        fn read_bytes(&mut self, _fd: &impl AsFd, buf: &mut [u8]) -> ReadResult {
+        fn read_bytes(
+            &mut self,
+            _fd: &impl AsFd,
+            buf: &mut [u8],
+        ) -> std::io::Result<Option<NonZeroUsize>> {
             if self.data.is_empty() {
-                return ReadResult::WouldBlock;
+                return Ok(None);
             }
 
             let len = self.data.len().min(buf.len());
@@ -98,10 +75,16 @@ mod tests {
                 .copy_from_slice(self.data.get(..len).unwrap_or_else(|| unreachable!()));
             self.data = self.data.get(len..).unwrap_or_else(|| unreachable!());
 
-            ReadResult::Data(NonZeroUsize::new(len).unwrap_or_else(|| unreachable!()))
+            Ok(Some(
+                NonZeroUsize::new(len).unwrap_or_else(|| unreachable!()),
+            ))
         }
 
-        fn write_bytes(&mut self, _fd: &impl AsFd, _buf: &[u8]) -> WriteResult {
+        fn write_bytes(
+            &mut self,
+            _fd: &impl AsFd,
+            _buf: &[u8],
+        ) -> std::io::Result<Option<NonZeroUsize>> {
             unreachable!()
         }
     }
@@ -122,7 +105,7 @@ mod tests {
         let (_, res) = Reader::<{ Message::BYTESIZE }>::new_with_data(&buf);
 
         match res {
-            Some(ReaderResult::Data(data)) => assert_eq!(data, buf),
+            Some(data) => assert_eq!(data, buf),
             other => panic!("unexpected result: {other:?}"),
         }
     }
@@ -137,8 +120,8 @@ mod tests {
         let fd = std::io::stdin();
 
         assert!(res.is_none());
-        match reader.read_from(&mut stream, &fd) {
-            ReaderResult::Data(data) => assert_eq!(data, buf),
+        match reader.read_from(&mut stream, &fd).unwrap() {
+            Some(data) => assert_eq!(data, buf),
             other => panic!("unexpected result: {other:?}"),
         }
     }
@@ -149,7 +132,7 @@ mod tests {
         let (_, res) = Reader::<{ Message::BYTESIZE }>::new_with_data(&buf);
 
         match res {
-            Some(ReaderResult::Data(data)) => assert_eq!(data, buf),
+            Some(data) => assert_eq!(data, buf),
             other => panic!("unexpected result: {other:?}"),
         }
     }

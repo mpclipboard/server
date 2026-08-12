@@ -1,6 +1,6 @@
 use crate::as_poll_fd::AsPollFd;
 use anyhow::{Context, Result};
-use mpclipboard_shared::{info, revents::REvents};
+use mpclipboard_shared::{REvents, info};
 use rustix::{
     event::{PollFd, PollFlags},
     net::{AddressFamily, SocketType},

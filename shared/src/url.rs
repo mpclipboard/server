@@ -1,5 +1,4 @@
 use crate::{Host, NonEmptyInlineString};
-use anyhow::{Context, Result, bail};
 use std::net::{SocketAddr, SocketAddrV4, ToSocketAddrs};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,21 +10,24 @@ pub struct Url {
 }
 
 impl Url {
-    pub fn parse(url: &str) -> Result<Self> {
+    pub fn parse(url: &str) -> std::io::Result<Self> {
         let (scheme, url) = url
             .split_once("://")
-            .context("no :// separator in the URL")?;
+            .ok_or_else(|| std::io::Error::other("no :// separator in the URL"))?;
         let (host, port) = url
-            .split_once(":")
-            .context("no : separator between host and post")?;
+            .rsplit_once(":")
+            .ok_or_else(|| std::io::Error::other("no : separator between host and port"))?;
 
         let tls = match scheme {
             "http" => false,
             "https" => true,
-            _ => bail!("unknown URL scheme"),
+            _ => return Err(std::io::Error::other("unknown URL scheme")),
         };
-        let host = NonEmptyInlineString::new(host).context("host is too long")?;
-        let port = port.parse::<u16>().context("invalid port")?;
+        let host = NonEmptyInlineString::new(host)
+            .ok_or_else(|| std::io::Error::other("host is empty or too long"))?;
+        let port = port
+            .parse::<u16>()
+            .map_err(|_| std::io::Error::other("invalid port"))?;
 
         let header = NonEmptyInlineString::new(&format!("{}:{port}", host.as_str()))
             .unwrap_or_else(|| unreachable!());
@@ -38,8 +40,10 @@ impl Url {
         })
     }
 
-    pub fn resolve(&self) -> Result<SocketAddrV4> {
-        let addrs = (self.host.as_str(), self.port).to_socket_addrs()?;
+    pub fn resolve(&self) -> std::io::Result<SocketAddrV4> {
+        let addrs = (self.host.as_str(), self.port)
+            .to_socket_addrs()
+            .map_err(|err| std::io::Error::other(format!("failed to resolve URL: {err:?}")))?;
 
         addrs
             .filter_map(|addr| match addr {
@@ -47,7 +51,7 @@ impl Url {
                 SocketAddr::V6(_) => None,
             })
             .next()
-            .context("can't resolve URL to IPv4 address")
+            .ok_or_else(|| std::io::Error::other("can't resolve URL to IPv4 address"))
     }
 
     pub fn is_tls(&self) -> bool {

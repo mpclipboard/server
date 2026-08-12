@@ -7,7 +7,6 @@ edition = "2024"
 rustix = { version = "1", features = ["time", "fs", "event", "net"] }
 boml = "2"
 log = "0.4"
-anyhow = "1.0.104"
 
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
 epoll = "4.4"

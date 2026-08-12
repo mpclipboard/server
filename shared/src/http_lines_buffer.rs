@@ -22,7 +22,7 @@ impl<const N: usize> HttpLinesBuffer<N> {
         self.pos += len.get();
     }
 
-    pub(crate) fn line(&self) -> Option<&[u8]> {
+    pub(crate) fn next_line(&self) -> Option<&[u8]> {
         let buf = &self.buf[..self.pos];
         let idx = buf.windows(2).position(|w| w == b"\r\n")?;
         Some(&buf[..idx + 2])
@@ -55,27 +55,27 @@ mod tests {
         buffer.remainder()[..response.len()].copy_from_slice(response.as_bytes());
         buffer.received(NonZeroUsize::new(response.len()).unwrap());
 
-        let res = buffer.line().unwrap();
+        let res = buffer.next_line().unwrap();
         assert_eq!(res, line1.as_bytes());
         buffer.consumed(line1.len());
 
-        let res = buffer.line().unwrap();
+        let res = buffer.next_line().unwrap();
         assert_eq!(res, line2.as_bytes());
         buffer.consumed(line2.len());
 
-        let res = buffer.line().unwrap();
+        let res = buffer.next_line().unwrap();
         assert_eq!(res, line3.as_bytes());
         buffer.consumed(line3.len());
 
-        let res = buffer.line().unwrap();
+        let res = buffer.next_line().unwrap();
         assert_eq!(res, line4.as_bytes());
         buffer.consumed(line4.len());
 
-        let res = buffer.line().unwrap();
+        let res = buffer.next_line().unwrap();
         assert_eq!(res, b"\r\n");
         buffer.consumed("\r\n".len());
 
-        assert_eq!(buffer.line(), None);
+        assert_eq!(buffer.next_line(), None);
 
         let (buf, len) = buffer.leftover();
         assert_eq!(&buf[..len], b"ABC");

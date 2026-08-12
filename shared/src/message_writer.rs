@@ -1,8 +1,4 @@
-use crate::{
-    byte_stream::{ByteStream, WriteResult},
-    message::Message,
-    writebuf::Writebuf,
-};
+use crate::{byte_stream::ByteStream, message::Message, writebuf::Writebuf};
 use std::{num::NonZeroUsize, os::fd::AsFd};
 
 #[expect(clippy::large_enum_variant)]
@@ -14,12 +10,6 @@ pub enum MessageWriter {
         current: Writebuf<{ Message::BYTESIZE }>,
         next: Option<Writebuf<{ Message::BYTESIZE }>>,
     },
-}
-
-#[derive(Debug)]
-pub enum MessageWriterResult {
-    StillPending,
-    Died(MessageWriterError),
 }
 
 impl MessageWriter {
@@ -69,28 +59,18 @@ impl MessageWriter {
         &mut self,
         stream: &mut impl ByteStream,
         fd: &impl AsFd,
-    ) -> MessageWriterResult {
+    ) -> std::io::Result<()> {
         while let Some(buf) = self.buf_to_write() {
-            match stream.write_bytes(fd, buf) {
-                WriteResult::Data(len) => self.written(len),
-                WriteResult::Eof => return MessageWriterResult::Died(MessageWriterError::EOF),
-                WriteResult::WouldBlock => return MessageWriterResult::StillPending,
-                WriteResult::Err(err) => {
-                    return MessageWriterResult::Died(MessageWriterError::Transport(err));
-                }
+            match stream.write_bytes(fd, buf)? {
+                Some(len) => self.written(len),
+                None => return Ok(()),
             }
         }
 
-        MessageWriterResult::StillPending
+        Ok(())
     }
 
     pub fn is_empty(&self) -> bool {
         self.buf_to_write().is_none()
     }
-}
-
-#[derive(Debug)]
-pub enum MessageWriterError {
-    EOF,
-    Transport(anyhow::Error),
 }

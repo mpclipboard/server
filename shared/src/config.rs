@@ -1,5 +1,3 @@
-use anyhow::{Context, Result, anyhow};
-use boml::Toml;
 use std::path::Path;
 
 pub struct ConfigParser;
@@ -8,25 +6,22 @@ impl ConfigParser {
     pub fn parse<const N: usize>(
         path: impl AsRef<Path>,
         keys: [&'static str; N],
-    ) -> Result<[String; N]> {
+    ) -> std::io::Result<[String; N]> {
         let path = path.as_ref();
 
-        let contents = std::fs::read_to_string(path).context("failed to read config file")?;
+        let contents = std::fs::read_to_string(path)?;
         let toml =
-            boml::parse(&contents).map_err(|err| anyhow!("failed to parse TOML: {err:?}"))?;
+            boml::parse(&contents).map_err(|err| std::io::Error::other(format!("{err:?}")))?;
 
-        fn get_str<'a>(toml: &'a Toml<'_>, key: &'static str) -> Result<String> {
-            toml.get_string(key)
-                .map(ToString::to_string)
-                .map_err(|err| anyhow!("failed to get {key} key: {err:?}"))
+        let mut values = core::array::from_fn(|_| String::new());
+
+        for (idx, key) in keys.iter().enumerate() {
+            let value = toml
+                .get_string(key)
+                .map_err(|err| std::io::Error::other(format!("failed to get {key}: {err:?}")))?;
+
+            values[idx] = value.to_string();
         }
-
-        let values: [String; N] = keys
-            .iter()
-            .map(|key| get_str(&toml, *key))
-            .collect::<Result<Vec<String>>>()?
-            .try_into()
-            .unwrap_or_else(|_| unreachable!());
 
         Ok(values)
     }

@@ -2,13 +2,7 @@ use crate::{
     CONNECTION_UPGRADE_HEADER, HOST_PREFIX, Host, ID, ID_PREFIX, MAX_HOST_LENGTH, MAX_ID_LENGTH,
     MAX_TOKEN_LENGTH, MIN_PADDING_LENGTH, PADDING_PREFIX, START_LINE, TOKEN_PREFIX, Token,
     UPGRADE_MPCLIPBOARD_RAW_HEADER,
-    byte_stream::ByteStream,
-    http_lines_reader::{HttpLinesParser, HttpLinesReader},
-    strip_prefix_ignore_ascii_case,
-    writer::{Writer, WriterResult},
 };
-use anyhow::{Context, Result};
-use std::os::fd::AsFd;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HandshakeRequest {
@@ -37,7 +31,7 @@ impl HandshakeRequest {
 }
 
 impl HandshakeRequest {
-    fn encode(&self) -> [u8; Self::BYTESIZE] {
+    pub(crate) fn encode(&self) -> [u8; Self::BYTESIZE] {
         let mut buf = [0; Self::BYTESIZE];
         let mut pos = 0;
 
@@ -83,91 +77,6 @@ impl HandshakeRequest {
         buf
     }
 }
-
-#[derive(Debug, Clone, Copy)]
-pub struct HandshakeRequestWriter {
-    inner: Writer<{ HandshakeRequest::BYTESIZE }>,
-}
-
-impl HandshakeRequestWriter {
-    pub fn new(request: &HandshakeRequest) -> Self {
-        Self {
-            inner: Writer::new(request.encode()),
-        }
-    }
-
-    pub fn write_to(&mut self, stream: &mut impl ByteStream, fd: &impl AsFd) -> WriterResult {
-        self.inner.write_to(stream, fd)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct HandshakeRequestParser {
-    seen_start_line: bool,
-    host: Option<Host>,
-    token: Option<Token>,
-    id: Option<ID>,
-    seen_connection_upgrade: bool,
-    seen_upgrade_mpclipboard_raw: bool,
-}
-
-impl HttpLinesParser for HandshakeRequestParser {
-    type Output = HandshakeRequest;
-
-    fn new() -> Self {
-        Self {
-            seen_start_line: false,
-            host: None,
-            token: None,
-            id: None,
-            seen_connection_upgrade: false,
-            seen_upgrade_mpclipboard_raw: false,
-        }
-    }
-
-    fn line_received(&mut self, line: &str) -> Result<()> {
-        if line.starts_with(START_LINE) {
-            self.seen_start_line = true;
-        } else if let Some(value) = strip_prefix_ignore_ascii_case(line, HOST_PREFIX)
-            && let Some(value) = value.strip_suffix("\r\n")
-        {
-            self.host = Some(Host::new(value).context("malformed Host header")?);
-        } else if let Some(value) = strip_prefix_ignore_ascii_case(line, TOKEN_PREFIX)
-            && let Some(value) = value.strip_suffix("\r\n")
-        {
-            self.token = Some(Token::new(value).context("malformed Token header")?);
-        } else if let Some(value) = strip_prefix_ignore_ascii_case(line, ID_PREFIX)
-            && let Some(value) = value.strip_suffix("\r\n")
-        {
-            self.id = Some(ID::new(value).context("malformed ID header")?);
-        } else if strip_prefix_ignore_ascii_case(line, CONNECTION_UPGRADE_HEADER) == Some("\r\n") {
-            self.seen_connection_upgrade = true;
-        } else if strip_prefix_ignore_ascii_case(line, UPGRADE_MPCLIPBOARD_RAW_HEADER)
-            == Some("\r\n")
-        {
-            self.seen_upgrade_mpclipboard_raw = true;
-        }
-
-        Ok(())
-    }
-
-    fn try_finish(&self) -> Option<Self::Output> {
-        if self.seen_start_line
-            && let Some(host) = self.host
-            && let Some(token) = self.token
-            && let Some(id) = self.id
-            && self.seen_connection_upgrade
-            && self.seen_upgrade_mpclipboard_raw
-        {
-            Some(HandshakeRequest { host, token, id })
-        } else {
-            None
-        }
-    }
-}
-
-pub type HandshakeRequestReader =
-    HttpLinesReader<HandshakeRequestParser, { HandshakeRequest::BYTESIZE }>;
 
 #[cfg(test)]
 mod tests {

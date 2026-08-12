@@ -1,16 +1,9 @@
 use crate::connection::{
     ConnectionState, FREEZE_TIME_IN_SECS, connected::Connected, disconnected::Disconnected,
-    stream::Stream,
+    maybe_tls_stream::MaybeTlsStream,
 };
 use mpclipboard_shared::{
-    error,
-    event_loop::Wants,
-    handshake_response::{HandshakeResponseParser, HandshakeResponseReader},
-    http_lines_reader::{HttpLinesParser, HttpLinesReaderResult},
-    message::Message,
-    reader::ReaderResult,
-    tcp_keep_alive::enable_tcp_keep_alive,
-    trace, warn,
+    HandshakeResponseReader, Message, Wants, enable_tcp_keep_alive, error, trace, warn,
 };
 use std::os::fd::{AsRawFd, BorrowedFd};
 
@@ -25,12 +18,12 @@ impl ReadingHandshakeResponse {
     pub(crate) fn new(fd: BorrowedFd<'static>, now: u64) -> Self {
         Self {
             fd,
-            reader: HandshakeResponseReader::new(HandshakeResponseParser::new()),
+            reader: HandshakeResponseReader::new(),
             last_activity_at: now,
         }
     }
 
-    pub(crate) fn wants(&self, stream: &Stream) -> Option<(BorrowedFd<'static>, Wants)> {
+    pub(crate) fn wants(&self, stream: &MaybeTlsStream) -> Option<(BorrowedFd<'static>, Wants)> {
         Some((self.fd, stream.wants(Wants::Read)))
     }
 
@@ -55,14 +48,10 @@ impl ReadingHandshakeResponse {
     pub(crate) fn read(
         mut self,
         now: u64,
-        stream: &mut Stream,
+        stream: &mut MaybeTlsStream,
     ) -> (ConnectionState, Option<Message>) {
         match self.reader.read_from(stream, &self.fd) {
-            HttpLinesReaderResult::Done {
-                buf,
-                len,
-                output: (),
-            } => {
+            Ok(Some(((), buf, len))) => {
                 trace!("Handshake response matches");
 
                 if let Err(err) = enable_tcp_keep_alive(&self.fd) {
@@ -71,32 +60,23 @@ impl ReadingHandshakeResponse {
                 } else {
                     let data = &buf[..len];
                     warn!("Handshake leftover: {data:?}");
-                    let (connected, res) = Connected::new(self.fd, data);
-                    match res {
-                        Some(ReaderResult::Data(buf)) => match Message::decode(&buf) {
-                            Ok(message) => (connected.into(), Some(message)),
-                            Err(err) => {
-                                error!("failed to decode handshake leftover: {err:?}");
-                                (connected.disconnect(now), None)
-                            }
-                        },
-                        Some(ReaderResult::Died(err)) => {
-                            error!("failed to read handshake leftover: {err:?}");
+                    let (connected, message) = Connected::new(self.fd, data);
+                    match message {
+                        Some(Ok(message)) => (connected.into(), Some(message)),
+                        Some(Err(err)) => {
+                            error!("failed to decode handshake leftover: {err:?}");
                             (connected.disconnect(now), None)
-                        }
-                        Some(ReaderResult::StillPending) => {
-                            unreachable!("Reader::new_with_data never returns StillPending")
                         }
                         None => connected.read(now, stream),
                     }
                 }
             }
-            HttpLinesReaderResult::Pending => {
+            Ok(None) => {
                 trace!("handshake response still pending: {:?}", self.reader);
                 self.last_activity_at = now;
                 (self.into(), None)
             }
-            HttpLinesReaderResult::Err(err) => {
+            Err(err) => {
                 error!("failed to read() handshake response: {err:?}");
                 (self.disconnect(now), None)
             }

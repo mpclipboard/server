@@ -1,17 +1,13 @@
-use crate::connection::{ConnectionState, disconnected::Disconnected, stream::Stream};
-use mpclipboard_shared::{
-    error,
-    event_loop::Wants,
-    message::Message,
-    message_writer::{MessageWriter, MessageWriterResult},
-    reader::{Reader, ReaderResult},
+use crate::connection::{
+    ConnectionState, disconnected::Disconnected, maybe_tls_stream::MaybeTlsStream,
 };
+use mpclipboard_shared::{Message, MessageReader, MessageWriter, Wants, error};
 use std::os::fd::{AsRawFd, BorrowedFd};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Connected {
     fd: BorrowedFd<'static>,
-    reader: Reader<{ Message::BYTESIZE }>,
+    reader: MessageReader,
     writer: MessageWriter,
 }
 
@@ -19,8 +15,8 @@ impl Connected {
     pub(crate) fn new(
         fd: BorrowedFd<'static>,
         data: &[u8],
-    ) -> (Self, Option<ReaderResult<{ Message::BYTESIZE }>>) {
-        let (reader, res) = Reader::new_with_data(data);
+    ) -> (Self, Option<std::io::Result<Message>>) {
+        let (reader, buf) = MessageReader::new_with_data(data);
 
         (
             Self {
@@ -28,11 +24,11 @@ impl Connected {
                 reader,
                 writer: MessageWriter::new(),
             },
-            res,
+            buf,
         )
     }
 
-    pub(crate) fn wants(&self, stream: &Stream) -> Option<(BorrowedFd<'static>, Wants)> {
+    pub(crate) fn wants(&self, stream: &MaybeTlsStream) -> Option<(BorrowedFd<'static>, Wants)> {
         Some((
             self.fd,
             stream.wants(if self.writer.is_empty() {
@@ -55,25 +51,19 @@ impl Connected {
     pub(crate) fn read(
         mut self,
         now: u64,
-        stream: &mut Stream,
+        stream: &mut MaybeTlsStream,
     ) -> (ConnectionState, Option<Message>) {
         match self.reader.read_from(stream, &self.fd) {
-            ReaderResult::StillPending => (self.into(), None),
-            ReaderResult::Died(err) => {
+            Ok(None) => (self.into(), None),
+            Err(err) => {
                 error!("failed to read({:?}): {err:?}", self.fd);
                 (self.disconnect(now), None)
             }
-            ReaderResult::Data(buf) => match Message::decode(&buf) {
-                Ok(message) => (self.into(), Some(message)),
-                Err(err) => {
-                    error!("failed to decode message from {:?}: {err:?}", self.fd);
-                    (self.disconnect(now), None)
-                }
-            },
+            Ok(Some(message)) => (self.into(), Some(message)),
         }
     }
 
-    pub(crate) fn write(mut self, now: u64, stream: &mut Stream) -> ConnectionState {
+    pub(crate) fn write(mut self, now: u64, stream: &mut MaybeTlsStream) -> ConnectionState {
         if self.writer.is_empty()
             && let Err(err) = stream.flush(&self.fd)
         {
@@ -82,8 +72,8 @@ impl Connected {
         }
 
         match self.writer.write_to(stream, &self.fd) {
-            MessageWriterResult::StillPending => self.into(),
-            MessageWriterResult::Died(err) => {
+            Ok(()) => self.into(),
+            Err(err) => {
                 error!("failed to write({:?}): {err:?}", self.fd);
                 self.disconnect(now)
             }

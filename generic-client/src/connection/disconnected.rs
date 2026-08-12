@@ -4,13 +4,13 @@ use crate::{
         ConnectionState,
         connecting::Connecting,
         helpers::{ConnectResult, connect},
-        stream::Stream,
+        maybe_tls_stream::MaybeTlsStream,
         tls_handshake::TlsHandshake,
         writing_handshake_request::WritingHandshakeRequest,
     },
 };
 use anyhow::Context as _;
-use mpclipboard_shared::{error, event_loop::Wants};
+use mpclipboard_shared::{Wants, error};
 use std::os::fd::{AsRawFd, BorrowedFd};
 
 #[derive(Debug, Clone, Copy)]
@@ -31,9 +31,13 @@ impl Disconnected {
         None
     }
 
-    pub(crate) fn try_reconnect(mut self, now: u64, config: &Config) -> (ConnectionState, Stream) {
+    pub(crate) fn try_reconnect(
+        mut self,
+        now: u64,
+        config: &Config,
+    ) -> (ConnectionState, MaybeTlsStream) {
         if now - self.last_activity_at < Self::RECONNECT_AFTER {
-            return (self.into(), Stream::empty());
+            return (self.into(), MaybeTlsStream::empty());
         }
 
         let addr = match config.url.resolve() {
@@ -41,7 +45,7 @@ impl Disconnected {
             Err(err) => {
                 error!("failed to get IP address of the url: {err:?}");
                 self.last_activity_at = now;
-                return (self.into(), Stream::empty());
+                return (self.into(), MaybeTlsStream::empty());
             }
         };
 
@@ -50,17 +54,17 @@ impl Disconnected {
             ConnectResult::StillPending(fd) => (fd, false),
             ConnectResult::Failed => {
                 self.last_activity_at = now;
-                return (self.into(), Stream::empty());
+                return (self.into(), MaybeTlsStream::empty());
             }
         };
 
-        let stream = match Stream::new(&config.url).context("failed to create stream") {
+        let stream = match MaybeTlsStream::new(&config.url).context("failed to create stream") {
             Ok(stream) => stream,
             Err(err) => {
                 error!("{err:?}");
                 unsafe { rustix::io::close(fd.as_raw_fd()) };
                 self.last_activity_at = now;
-                return (self.into(), Stream::empty());
+                return (self.into(), MaybeTlsStream::empty());
             }
         };
 

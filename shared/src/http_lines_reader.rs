@@ -1,8 +1,4 @@
-use crate::{
-    byte_stream::{ByteStream, ReadResult},
-    http_lines_buffer::HttpLinesBuffer,
-};
-use anyhow::{Result, anyhow};
+use crate::{byte_stream::ByteStream, http_lines_buffer::HttpLinesBuffer};
 use std::os::fd::AsFd;
 
 #[derive(Debug, Clone, Copy)]
@@ -31,67 +27,49 @@ where
         &mut self,
         stream: &mut impl ByteStream,
         fd: &impl AsFd,
-    ) -> HttpLinesReaderResult<P, N> {
+    ) -> std::io::Result<Option<(P::Output, [u8; N], usize)>> {
         loop {
-            match stream.read_bytes(fd, self.buf.remainder()) {
-                ReadResult::Data(len) => {
+            match stream.read_bytes(fd, self.buf.remainder())? {
+                Some(len) => {
                     self.buf.received(len);
 
-                    while let Some(line) = self.buf.line()
+                    while let Some(line) = self.buf.next_line()
                         && !self.seen_end
                     {
                         let line = match core::str::from_utf8(line) {
                             Ok(line) => line,
                             Err(err) => {
-                                return HttpLinesReaderResult::Err(anyhow!(
-                                    "non-utf8 handshake request: {err:?}"
-                                ));
+                                return Err(std::io::Error::other(format!(
+                                    "non-utf8 handshake line: {err:?}"
+                                )));
                             }
                         };
 
                         if line == "\r\n" {
                             self.seen_end = true;
-                        } else if let Err(err) = self.parser.line_received(line) {
-                            return HttpLinesReaderResult::Err(err);
+                        } else {
+                            self.parser.line_received(line)?;
                         }
-
                         self.buf.consumed(line.len());
-                    }
 
-                    if self.seen_end
-                        && let Some(output) = self.parser.try_finish()
-                    {
-                        let (buf, len) = self.buf.leftover();
-                        return HttpLinesReaderResult::Done { buf, len, output };
+                        if self.seen_end
+                            && let Some(output) = self.parser.try_finish()
+                        {
+                            let (buf, len) = self.buf.leftover();
+                            return Ok(Some((output, buf, len)));
+                        }
                     }
                 }
-                ReadResult::Eof => return HttpLinesReaderResult::Err(anyhow!("EOF")),
-                ReadResult::WouldBlock => return HttpLinesReaderResult::Pending,
-                ReadResult::Err(err) => {
-                    return HttpLinesReaderResult::Err(anyhow!("failed to read(): {err:?}"));
-                }
+                None => return Ok(None),
             }
         }
     }
-}
-
-pub enum HttpLinesReaderResult<P, const N: usize>
-where
-    P: HttpLinesParser,
-{
-    Done {
-        buf: [u8; N],
-        len: usize,
-        output: P::Output,
-    },
-    Pending,
-    Err(anyhow::Error),
 }
 
 pub trait HttpLinesParser {
     type Output;
 
     fn new() -> Self;
-    fn line_received(&mut self, line: &str) -> Result<()>;
+    fn line_received(&mut self, line: &str) -> std::io::Result<()>;
     fn try_finish(&self) -> Option<Self::Output>;
 }

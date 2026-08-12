@@ -1,20 +1,10 @@
-use crate::{
-    byte_stream::{ByteStream, WriteResult},
-    writebuf::Writebuf,
-};
+use crate::{byte_stream::ByteStream, writebuf::Writebuf};
 use std::os::fd::AsFd;
 
 #[expect(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Copy)]
 pub struct Writer<const N: usize> {
     writebuf: Writebuf<N>,
-}
-
-#[derive(Debug)]
-pub enum WriterResult {
-    Done,
-    StillPending,
-    Died(WriterError),
 }
 
 impl<const N: usize> Writer<N> {
@@ -24,24 +14,20 @@ impl<const N: usize> Writer<N> {
         }
     }
 
-    pub fn write_to(&mut self, stream: &mut impl ByteStream, fd: &impl AsFd) -> WriterResult {
+    pub fn write_to(
+        &mut self,
+        stream: &mut impl ByteStream,
+        fd: &impl AsFd,
+    ) -> std::io::Result<bool> {
         loop {
-            match stream.write_bytes(fd, self.writebuf.remainder()) {
-                WriteResult::Data(len) => {
+            match stream.write_bytes(fd, self.writebuf.remainder())? {
+                Some(len) => {
                     if self.writebuf.written(len) {
-                        return WriterResult::Done;
+                        return Ok(true);
                     }
                 }
-                WriteResult::Eof => return WriterResult::Died(WriterError::EOF),
-                WriteResult::WouldBlock => return WriterResult::StillPending,
-                WriteResult::Err(err) => return WriterResult::Died(WriterError::Transport(err)),
+                None => return Ok(false),
             }
         }
     }
-}
-
-#[derive(Debug)]
-pub enum WriterError {
-    EOF,
-    Transport(anyhow::Error),
 }

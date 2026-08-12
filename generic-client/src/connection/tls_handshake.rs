@@ -1,10 +1,13 @@
-use crate::connection::{
-    ConnectionState, FREEZE_TIME_IN_SECS,
-    disconnected::Disconnected,
-    stream::{Stream, TlsHandshakeResult},
-    writing_handshake_request::WritingHandshakeRequest,
+use crate::{
+    config::Config,
+    connection::{
+        ConnectionState, FREEZE_TIME_IN_SECS,
+        disconnected::Disconnected,
+        maybe_tls_stream::{MaybeTlsStream, TlsHandshakeResult},
+        writing_handshake_request::WritingHandshakeRequest,
+    },
 };
-use mpclipboard_shared::{error, event_loop::Wants};
+use mpclipboard_shared::{Wants, error};
 use std::os::fd::{AsRawFd, BorrowedFd};
 
 #[derive(Debug, Clone, Copy)]
@@ -21,7 +24,7 @@ impl TlsHandshake {
         }
     }
 
-    pub(crate) fn wants(&self, stream: &Stream) -> Option<(BorrowedFd<'static>, Wants)> {
+    pub(crate) fn wants(&self, stream: &MaybeTlsStream) -> Option<(BorrowedFd<'static>, Wants)> {
         Some((self.fd, stream.tls_wants()))
     }
 
@@ -39,20 +42,20 @@ impl TlsHandshake {
         Disconnected::new(now).into()
     }
 
-    pub(crate) fn advance(
+    pub(crate) fn finish(
         mut self,
         now: u64,
-        config: &crate::config::Config,
-        stream: &mut Stream,
+        config: &Config,
+        stream: &mut MaybeTlsStream,
     ) -> ConnectionState {
-        match stream.tls_handshake(&self.fd) {
+        match stream.finish_tls_handshake(&self.fd) {
             TlsHandshakeResult::Done => WritingHandshakeRequest::new(self.fd, now, config).into(),
             TlsHandshakeResult::Pending => {
                 self.last_activity_at = now;
                 self.into()
             }
-            TlsHandshakeResult::Died(err) => {
-                error!("TLS handshake failed: {err:?}");
+            TlsHandshakeResult::Died => {
+                error!("TLS handshake failed");
                 self.disconnect(now)
             }
         }

@@ -9,8 +9,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use mpclipboard_shared::{
-    ID, Timerfd, error, info, message::Message, revents::REvents, store::Store,
-    tcp_keep_alive::enable_tcp_keep_alive, trace,
+    ID, Message, REvents, Store, Timerfd, enable_tcp_keep_alive, error, info, trace,
 };
 use rustix::event::PollFlags;
 use std::{
@@ -34,7 +33,7 @@ impl MainLoop {
     pub(crate) fn new(config: Config) -> Result<Self> {
         let listener = TcpListener::new(config.url.resolve()?)?;
 
-        let timer = Timerfd::new();
+        let timer = Timerfd::new()?;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .context("time goes backwards")?
@@ -102,7 +101,10 @@ impl MainLoop {
             return;
         }
 
-        self.now = self.timer.read();
+        self.now = self
+            .timer
+            .read()
+            .unwrap_or_else(|err| unreachable!("failed to read timerfd: {err}"));
         trace!("tick {}", self.now);
 
         self.pre_sources.reap(self.now);
@@ -123,7 +125,7 @@ impl MainLoop {
     fn on_pre_source_event(&mut self, source: PreSource, revents: PollFlags) {
         match source.on_poll_event(revents, self.now) {
             PreSourceResult::Died => {}
-            PreSourceResult::StillPending(source) => {
+            PreSourceResult::Pending(source) => {
                 self.pre_sources.insert(source);
             }
             PreSourceResult::Done((req, fd)) => {
@@ -142,7 +144,7 @@ impl MainLoop {
     fn on_pre_sink_event(&mut self, sink: PreSink, revents: PollFlags) {
         match sink.on_poll_event(revents, self.now) {
             PreSinkResult::Died => {}
-            PreSinkResult::StillPending(sink) => {
+            PreSinkResult::Pending(sink) => {
                 self.pre_sinks.insert(sink);
             }
             PreSinkResult::Done((id, fd)) => match enable_tcp_keep_alive(&fd) {
@@ -170,7 +172,7 @@ impl MainLoop {
 
                 self.clients.insert(client);
             }
-            ClientResult::StillPending(client) => {
+            ClientResult::Pending(client) => {
                 self.clients.insert(client);
             }
         }

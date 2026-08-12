@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use mpclipboard_shared::{ID, Token, config::ConfigParser, url::Url};
+use mpclipboard_shared::{ConfigParser, ID, Token, Url};
 use std::path::{Path, PathBuf};
 
 /// Representation of a runtime configuration
@@ -36,7 +36,8 @@ impl Config {
     }
 
     fn read(path: impl AsRef<Path>) -> Result<Self> {
-        let [url, token, id] = ConfigParser::parse(path, ["url", "token", "id"])?;
+        let [url, token, id] =
+            ConfigParser::parse(path, ["url", "token", "id"]).context("failed to parse config")?;
 
         Self::new(&url, &token, &id)
     }

@@ -1,11 +1,12 @@
 use crate::{
     config::Config,
     connection::{
-        ConnectionState, FREEZE_TIME_IN_SECS, disconnected::Disconnected, stream::Stream,
-        tls_handshake::TlsHandshake, writing_handshake_request::WritingHandshakeRequest,
+        ConnectionState, FREEZE_TIME_IN_SECS, disconnected::Disconnected,
+        maybe_tls_stream::MaybeTlsStream, tls_handshake::TlsHandshake,
+        writing_handshake_request::WritingHandshakeRequest,
     },
 };
-use mpclipboard_shared::{error, event_loop::Wants};
+use mpclipboard_shared::{Wants, error};
 use std::os::fd::{AsRawFd, BorrowedFd};
 
 #[derive(Debug, Clone, Copy)]
@@ -28,6 +29,7 @@ impl Connecting {
 
     pub(crate) fn disconnect_if_stuck(self, now: u64) -> ConnectionState {
         if now - self.last_activity_at > FREEZE_TIME_IN_SECS {
+            error!("Stuck in Connecting, disconnecting...");
             self.disconnect(now).into()
         } else {
             self.into()
@@ -39,7 +41,12 @@ impl Connecting {
         Disconnected::new(now).into()
     }
 
-    pub(crate) fn finish(self, now: u64, config: &Config, stream: &Stream) -> ConnectionState {
+    pub(crate) fn finish(
+        self,
+        now: u64,
+        config: &Config,
+        stream: &MaybeTlsStream,
+    ) -> ConnectionState {
         match rustix::net::sockopt::socket_error(self.fd) {
             Ok(Ok(())) => {
                 if stream.is_tls() {

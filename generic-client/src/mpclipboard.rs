@@ -1,12 +1,7 @@
 use crate::{Output, config::Config, connection::Connection, logger::Logger, tls::TLS};
 use anyhow::{Context, Result};
 use mpclipboard_shared::{
-    NonEmptyInlineString, error,
-    event_loop::{EventLoop, EventLoopResult},
-    info,
-    message::Message,
-    store::Store,
-    trace,
+    EventLoop, EventLoopResult, Message, NonEmptyInlineString, Store, error, info, trace,
 };
 use std::{
     os::fd::{AsFd, AsRawFd, BorrowedFd},
@@ -36,14 +31,16 @@ impl MPClipboard {
 
     fn new(config: Config) -> Result<Self> {
         info!("Running with config {config:?}");
-        let mut event_loop = EventLoop::new()?;
+        let mut event_loop = EventLoop::new().context("event loop has crashed")?;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_else(|_| unreachable!("time goes backwards"))
             .as_secs();
         let conn = Connection::new(config)?;
 
-        event_loop.sync(conn.wants())?;
+        event_loop
+            .sync(conn.wants())
+            .context("failed to update connection fd in event loop")?;
 
         Ok(Self {
             event_loop,
@@ -80,7 +77,10 @@ impl MPClipboard {
     ///
     /// Returns an error if OS-specific event loop (epoll/kqueue) returns an error
     pub fn read(&mut self) -> Result<Option<Output>> {
-        let polled = self.event_loop.wait(Some(Duration::from_secs(0)))?;
+        let polled = self
+            .event_loop
+            .wait(Some(Duration::from_secs(0)))
+            .context("failed to wait() on event loop")?;
 
         let prev_connectivity = self.conn.connectivity();
         let message = if let Some(message) = self.drain(polled)
@@ -92,7 +92,9 @@ impl MPClipboard {
         };
         let next_connectivity = self.conn.connectivity();
 
-        self.event_loop.sync(self.conn.wants())?;
+        self.event_loop
+            .sync(self.conn.wants())
+            .context("failed to update connection fd in event loop")?;
 
         let connectivity = if prev_connectivity == next_connectivity {
             None

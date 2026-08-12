@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, ensure};
-use mpclipboard_shared::{Token, config::ConfigParser, url::Url};
+use mpclipboard_shared::{ConfigParser, Token, Url};
 
 #[derive(Clone, Copy)]
 pub(crate) struct Config {
@@ -15,7 +15,8 @@ const PATH: &str = if cfg!(debug_assertions) {
 
 impl Config {
     pub(crate) fn read() -> Result<Self> {
-        let [url, token] = ConfigParser::parse(PATH, ["url", "token"])?;
+        let [url, token] =
+            ConfigParser::parse(PATH, ["url", "token"]).context("failed to parse config")?;
 
         let url = Url::parse(&url).context("malformed url")?;
         ensure!(!url.is_tls(), "url must have http scheme");

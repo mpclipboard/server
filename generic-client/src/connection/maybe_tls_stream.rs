@@ -1,11 +1,6 @@
 use crate::tls::TLS;
 use anyhow::{Context as _, Result};
-use mpclipboard_shared::{
-    byte_stream::{ByteStream, ReadResult, WriteResult},
-    event_loop::Wants,
-    url::Url,
-};
-use rustix::io::Errno;
+use mpclipboard_shared::{ByteStream, PlainByteStream, Url, Wants, error};
 use rustls::{ClientConnection, pki_types::ServerName};
 use std::{
     io::{ErrorKind, Read, Write},
@@ -14,7 +9,7 @@ use std::{
 };
 
 #[derive(Debug)]
-pub(crate) enum Stream {
+pub(crate) enum MaybeTlsStream {
     Empty,
     Plain,
     Tls(Box<ClientConnection>),
@@ -24,10 +19,10 @@ pub(crate) enum Stream {
 pub(crate) enum TlsHandshakeResult {
     Done,
     Pending,
-    Died(anyhow::Error),
+    Died,
 }
 
-impl Stream {
+impl MaybeTlsStream {
     pub(crate) fn empty() -> Self {
         Self::Empty
     }
@@ -49,14 +44,14 @@ impl Stream {
         matches!(self, Self::Tls(_))
     }
 
-    pub(crate) fn tls_handshake(&mut self, fd: &impl AsFd) -> TlsHandshakeResult {
+    pub(crate) fn finish_tls_handshake(&mut self, fd: &impl AsFd) -> TlsHandshakeResult {
         let conn = match self {
             Self::Tls(conn) => conn,
             Self::Plain => return TlsHandshakeResult::Done,
             Self::Empty => unreachable!("empty stream cannot perform TLS handshake"),
         };
 
-        match conn.complete_io(&mut SocketIo(fd)) {
+        match conn.complete_io(&mut StdReadWriteFd(fd)) {
             Ok(_) => {
                 if conn.is_handshaking() {
                     TlsHandshakeResult::Pending
@@ -65,7 +60,10 @@ impl Stream {
                 }
             }
             Err(err) if err.kind() == ErrorKind::WouldBlock => TlsHandshakeResult::Pending,
-            Err(err) => TlsHandshakeResult::Died(err.into()),
+            Err(err) => {
+                error!("TLS handshake failed: {err:?}");
+                TlsHandshakeResult::Died
+            }
         }
     }
 
@@ -76,7 +74,7 @@ impl Stream {
             Self::Empty => unreachable!("empty stream cannot flush"),
         };
 
-        match conn.complete_io(&mut SocketIo(fd)) {
+        match conn.complete_io(&mut StdReadWriteFd(fd)) {
             Ok(_) => Ok(()),
             Err(err) if err.kind() == ErrorKind::WouldBlock => Ok(()),
             Err(err) => Err(err.into()),
@@ -110,116 +108,92 @@ impl Stream {
     }
 }
 
-impl ByteStream for Stream {
-    fn read_bytes(&mut self, fd: &impl AsFd, buf: &mut [u8]) -> ReadResult {
+impl ByteStream for MaybeTlsStream {
+    fn read_bytes(
+        &mut self,
+        fd: &impl AsFd,
+        buf: &mut [u8],
+    ) -> std::io::Result<Option<NonZeroUsize>> {
         match self {
             Self::Empty => unreachable!("empty stream cannot read"),
-            Self::Plain => fd_read(fd, buf),
+            Self::Plain => PlainByteStream.read_bytes(fd, buf),
             Self::Tls(conn) => {
-                match conn.complete_io(&mut SocketIo(fd)) {
+                match conn.complete_io(&mut StdReadWriteFd(fd)) {
                     Ok(_) => {}
                     Err(err) if err.kind() == ErrorKind::WouldBlock => {}
-                    Err(err) => return ReadResult::Err(err.into()),
+                    Err(err) => {
+                        error!("TLS read failed: {err:?}");
+                        return Err(err);
+                    }
                 }
 
                 match conn.reader().read(buf).map(NonZeroUsize::new) {
-                    Ok(Some(len)) => ReadResult::Data(len),
-                    Ok(None) => ReadResult::Eof,
-                    Err(err) if err.kind() == ErrorKind::WouldBlock => ReadResult::WouldBlock,
-                    Err(err) => ReadResult::Err(err.into()),
+                    Ok(Some(len)) => Ok(Some(len)),
+                    Ok(None) => Err(std::io::Error::new(ErrorKind::UnexpectedEof, "EOF")),
+                    Err(err) if err.kind() == ErrorKind::WouldBlock => Ok(None),
+                    Err(err) => {
+                        error!("TLS plaintext read failed: {err:?}");
+                        Err(err)
+                    }
                 }
             }
         }
     }
 
-    fn write_bytes(&mut self, fd: &impl AsFd, buf: &[u8]) -> WriteResult {
+    fn write_bytes(&mut self, fd: &impl AsFd, buf: &[u8]) -> std::io::Result<Option<NonZeroUsize>> {
         match self {
             Self::Empty => unreachable!("empty stream cannot write"),
-            Self::Plain => fd_write(fd, buf),
+            Self::Plain => PlainByteStream.write_bytes(fd, buf),
             Self::Tls(conn) => {
                 let len = match conn.writer().write(buf).map(NonZeroUsize::new) {
                     Ok(Some(len)) => len,
-                    Ok(None) => return WriteResult::Eof,
-                    Err(err) if err.kind() == ErrorKind::WouldBlock => {
-                        return WriteResult::WouldBlock;
+                    Ok(None) => {
+                        return Err(std::io::Error::new(ErrorKind::UnexpectedEof, "EOF"));
                     }
-                    Err(err) => return WriteResult::Err(err.into()),
+                    Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                        return Ok(None);
+                    }
+                    Err(err) => {
+                        error!("TLS plaintext write failed: {err:?}");
+                        return Err(err);
+                    }
                 };
 
-                match conn.complete_io(&mut SocketIo(fd)) {
-                    Ok(_) => WriteResult::Data(len),
-                    Err(err) if err.kind() == ErrorKind::WouldBlock => WriteResult::Data(len),
-                    Err(err) => WriteResult::Err(err.into()),
+                match conn.complete_io(&mut StdReadWriteFd(fd)) {
+                    Ok(_) => Ok(Some(len)),
+                    Err(err) if err.kind() == ErrorKind::WouldBlock => Ok(Some(len)),
+                    Err(err) => {
+                        error!("TLS write failed: {err:?}");
+                        Err(err)
+                    }
                 }
             }
         }
     }
 }
 
-struct SocketIo<'a, F>(&'a F);
+struct StdReadWriteFd<'a, F>(&'a F);
 
-impl<F> Read for SocketIo<'_, F>
+impl<F> Read for StdReadWriteFd<'_, F>
 where
     F: AsFd,
 {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        fd_read(self.0, buf).into_io_result()
+        let len = rustix::io::read(self.0, buf)?;
+        Ok(len)
     }
 }
 
-impl<F> Write for SocketIo<'_, F>
+impl<F> Write for StdReadWriteFd<'_, F>
 where
     F: AsFd,
 {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        fd_write(self.0, buf).into_io_result()
+        let len = rustix::io::write(self.0, buf)?;
+        Ok(len)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
-    }
-}
-
-fn fd_read(fd: &impl AsFd, buf: &mut [u8]) -> ReadResult {
-    match rustix::io::read(fd, buf).map(NonZeroUsize::new) {
-        Ok(Some(len)) => ReadResult::Data(len),
-        Ok(None) => ReadResult::Eof,
-        Err(Errno::AGAIN) => ReadResult::WouldBlock,
-        Err(err) => ReadResult::Err(anyhow::anyhow!("{err:?}")),
-    }
-}
-
-fn fd_write(fd: &impl AsFd, buf: &[u8]) -> WriteResult {
-    match rustix::io::write(fd, buf).map(NonZeroUsize::new) {
-        Ok(Some(len)) => WriteResult::Data(len),
-        Ok(None) => WriteResult::Eof,
-        Err(Errno::AGAIN) => WriteResult::WouldBlock,
-        Err(err) => WriteResult::Err(anyhow::anyhow!("{err:?}")),
-    }
-}
-
-trait IntoIoResult {
-    fn into_io_result(self) -> std::io::Result<usize>;
-}
-
-impl IntoIoResult for ReadResult {
-    fn into_io_result(self) -> std::io::Result<usize> {
-        match self {
-            Self::Data(len) => Ok(len.get()),
-            Self::Eof => Ok(0),
-            Self::WouldBlock => Err(ErrorKind::WouldBlock.into()),
-            Self::Err(err) => Err(std::io::Error::other(err)),
-        }
-    }
-}
-
-impl IntoIoResult for WriteResult {
-    fn into_io_result(self) -> std::io::Result<usize> {
-        match self {
-            Self::Data(len) => Ok(len.get()),
-            Self::Eof => Ok(0),
-            Self::WouldBlock => Err(ErrorKind::WouldBlock.into()),
-            Self::Err(err) => Err(std::io::Error::other(err)),
-        }
     }
 }

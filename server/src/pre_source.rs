@@ -1,11 +1,6 @@
 use crate::{as_poll_fd::AsPollFd, reaper::CanBeReaped};
 use mpclipboard_shared::{
-    byte_stream::PlainByteStream,
-    error,
-    handshake_request::{HandshakeRequest, HandshakeRequestParser, HandshakeRequestReader},
-    http_lines_reader::{HttpLinesParser, HttpLinesReaderResult},
-    revents::REvents,
-    trace,
+    HandshakeRequest, HandshakeRequestReader, PlainByteStream, REvents, error, trace,
 };
 use rustix::event::{PollFd, PollFlags};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
@@ -18,7 +13,7 @@ pub struct PreSource {
 
 pub enum PreSourceResult {
     Died,
-    StillPending(PreSource),
+    Pending(PreSource),
     Done((HandshakeRequest, OwnedFd)),
 }
 
@@ -26,7 +21,7 @@ impl PreSource {
     pub(crate) fn new(fd: OwnedFd, now: u64) -> Self {
         Self {
             fd,
-            reader: HandshakeRequestReader::new(HandshakeRequestParser::new()),
+            reader: HandshakeRequestReader::new(),
             last_activity_at: now,
         }
     }
@@ -48,27 +43,23 @@ impl PreSource {
             trace!("{self} is readable");
 
             match self.reader.read_from(&mut PlainByteStream, &self.fd) {
-                HttpLinesReaderResult::Done {
-                    buf,
-                    len,
-                    output: req,
-                } => {
+                Ok(Some((req, buf, len))) => {
                     let buf = &buf[..len];
-                    assert!(buf.is_empty());
+                    assert_eq!(buf, b"");
                     return PreSourceResult::Done((req, self.fd));
                 }
-                HttpLinesReaderResult::Pending => {
+                Ok(None) => {
                     self.last_activity_at = now;
-                    return PreSourceResult::StillPending(self);
+                    return PreSourceResult::Pending(self);
                 }
-                HttpLinesReaderResult::Err(err) => {
+                Err(err) => {
                     error!("{self} failed to read(): {err:?}");
                     return PreSourceResult::Died;
                 }
             }
         }
 
-        PreSourceResult::StillPending(self)
+        PreSourceResult::Pending(self)
     }
 }
 

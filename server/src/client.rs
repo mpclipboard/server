@@ -1,13 +1,6 @@
 use crate::as_poll_fd::AsPollFd;
 use mpclipboard_shared::{
-    ID,
-    byte_stream::PlainByteStream,
-    error,
-    message::Message,
-    message_writer::{MessageWriter, MessageWriterResult},
-    reader::{Reader, ReaderResult},
-    revents::REvents,
-    trace,
+    ID, Message, MessageReader, MessageWriter, PlainByteStream, REvents, error, trace,
 };
 use rustix::event::{PollFd, PollFlags};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
@@ -15,14 +8,14 @@ use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 pub struct Client {
     fd: OwnedFd,
     id: ID,
-    reader: Reader<{ Message::BYTESIZE }>,
+    reader: MessageReader,
     writer: MessageWriter,
 }
 
 pub enum ClientResult {
     Died,
     Message((Message, Client)),
-    StillPending(Client),
+    Pending(Client),
 }
 
 impl Client {
@@ -30,7 +23,7 @@ impl Client {
         Self {
             fd,
             id,
-            reader: Reader::new(),
+            reader: MessageReader::new(),
             writer: MessageWriter::new(),
         }
     }
@@ -52,8 +45,8 @@ impl Client {
             trace!("{self} is writable");
 
             match self.writer.write_to(&mut PlainByteStream, &self.fd) {
-                MessageWriterResult::StillPending => {}
-                MessageWriterResult::Died(err) => {
+                Ok(()) => {}
+                Err(err) => {
                     error!("failed to write() for {self}: {err:?}");
                     return ClientResult::Died;
                 }
@@ -64,22 +57,16 @@ impl Client {
             trace!("{self} is readable");
 
             match self.reader.read_from(&mut PlainByteStream, &self.fd) {
-                ReaderResult::StillPending => {}
-                ReaderResult::Died(err) => {
+                Ok(None) => {}
+                Err(err) => {
                     error!("failed to read() for {self}: {err:?}");
                     return ClientResult::Died;
                 }
-                ReaderResult::Data(buf) => match Message::decode(&buf) {
-                    Ok(message) => return ClientResult::Message((message, self)),
-                    Err(err) => {
-                        error!("failed to decode message for {self}: {err:?}");
-                        return ClientResult::Died;
-                    }
-                },
+                Ok(Some(message)) => return ClientResult::Message((message, self)),
             }
         }
 
-        ClientResult::StillPending(self)
+        ClientResult::Pending(self)
     }
 
     pub(crate) fn id(&self) -> ID {

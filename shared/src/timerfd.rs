@@ -15,12 +15,11 @@ pub struct Timerfd {
 }
 
 impl Timerfd {
-    pub fn new() -> Self {
+    pub fn new() -> std::io::Result<Self> {
         let fd = timerfd_create(
             TimerfdClockId::Realtime,
             TimerfdFlags::CLOEXEC | TimerfdFlags::NONBLOCK,
-        )
-        .unwrap_or_else(|err| unreachable!("timerfd_create() failed: {err:?}"));
+        )?;
 
         timerfd_settime(
             &fd,
@@ -35,20 +34,18 @@ impl Timerfd {
                     tv_nsec: 0,
                 },
             },
-        )
-        .unwrap_or_else(|err| unreachable!("timerfd_settime() failed: {err:?}"));
+        )?;
 
-        Self { fd, time: 0 }
+        Ok(Self { fd, time: 0 })
     }
 
     #[must_use]
-    pub fn read(&mut self) -> u64 {
+    pub fn read(&mut self) -> std::io::Result<u64> {
         let mut buf = [0u8; 8];
-        let len = rustix::io::read(&self.fd, &mut buf)
-            .unwrap_or_else(|err| unreachable!("failed to read() from timerfd: {err:?}"));
+        let len = rustix::io::read(&self.fd, &mut buf)?;
         assert_eq!(len, 8);
         self.time += u64::from_le_bytes(buf);
-        self.time
+        Ok(self.time)
     }
 }
 
@@ -61,11 +58,5 @@ impl AsFd for Timerfd {
 impl AsRawFd for Timerfd {
     fn as_raw_fd(&self) -> i32 {
         self.fd.as_raw_fd()
-    }
-}
-
-impl Default for Timerfd {
-    fn default() -> Self {
-        Self::new()
     }
 }
