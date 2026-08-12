@@ -1,66 +1,45 @@
 use crate::{
-    Decode,
     byte_stream::{ByteStream, ReadResult},
     readbuf::Readbuf,
     trace,
 };
-use std::{marker::PhantomData, os::fd::AsFd};
+use std::os::fd::AsFd;
 
 #[derive(Debug, Clone, Copy)]
-pub struct Reader<const N: usize, T>
-where
-    T: Decode<N>,
-{
+pub struct Reader<const N: usize> {
     readbuf: Readbuf<N>,
-    _phantom: PhantomData<T>,
 }
 
-impl<const N: usize, T> Reader<N, T>
-where
-    T: Decode<N>,
-{
+impl<const N: usize> Reader<N> {
     pub fn new() -> Self {
         Self {
             readbuf: Readbuf::new(),
-            _phantom: PhantomData,
         }
     }
 
-    pub fn new_with_data(data: &[u8]) -> (Self, Option<ReaderResult<N, T>>) {
+    pub fn new_with_data(data: &[u8]) -> (Self, Option<ReaderResult<N>>) {
         assert!(data.len() <= N);
 
         if data.len() == N {
             let buf = data.try_into().unwrap_or_else(|_| unreachable!());
-            return (Self::new(), Some(Self::decode(buf)));
+            return (Self::new(), Some(ReaderResult::Data(buf)));
         }
 
         (
             Self {
                 readbuf: Readbuf::new_with_data(data),
-                _phantom: PhantomData,
             },
             None,
         )
     }
 
-    fn decode(buf: &[u8; N]) -> ReaderResult<N, T> {
-        match T::decode(buf) {
-            Ok(data) => ReaderResult::Data(data),
-            Err(err) => ReaderResult::Died(ReaderError::DecodeError(err)),
-        }
-    }
-
-    pub fn read_from(
-        &mut self,
-        stream: &mut impl ByteStream,
-        fd: &impl AsFd,
-    ) -> ReaderResult<N, T> {
+    pub fn read_from(&mut self, stream: &mut impl ByteStream, fd: &impl AsFd) -> ReaderResult<N> {
         loop {
             match stream.read_bytes(fd, self.readbuf.remainder()) {
                 ReadResult::Data(len) => {
                     trace!("received {len} bytes");
                     if let Some(buf) = self.readbuf.received(len) {
-                        return Self::decode(&buf);
+                        return ReaderResult::Data(buf);
                     }
                 }
                 ReadResult::Eof => return ReaderResult::Died(ReaderError::EOF),
@@ -72,32 +51,21 @@ where
 }
 
 #[derive(Debug)]
-pub enum ReaderResult<const N: usize, T>
-where
-    T: Decode<N>,
-{
-    Data(T),
+pub enum ReaderResult<const N: usize> {
+    Data([u8; N]),
     StillPending,
-    Died(ReaderError<N, T>),
+    Died(ReaderError),
 }
 
-pub enum ReaderError<const N: usize, T>
-where
-    T: Decode<N>,
-{
+pub enum ReaderError {
     EOF,
-    DecodeError(T::Error),
     Transport(anyhow::Error),
 }
 
-impl<const N: usize, T> std::fmt::Debug for ReaderError<N, T>
-where
-    T: Decode<N>,
-{
+impl std::fmt::Debug for ReaderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EOF => write!(f, "EOF"),
-            Self::DecodeError(err) => f.debug_tuple("DecodeError").field(err).finish(),
             Self::Transport(err) => f.debug_tuple("Transport").field(err).finish(),
         }
     }
@@ -107,9 +75,9 @@ where
 mod tests {
     use super::*;
     use crate::{
-        Encode, NonEmptyInlineString,
+        NonEmptyInlineString,
         byte_stream::{ByteStream, WriteResult},
-        message::{Message, MessageDecodeError},
+        message::Message,
     };
     use core::num::NonZeroUsize;
     use std::os::fd::AsFd;
@@ -143,9 +111,7 @@ mod tests {
     }
 
     fn encoded(message: Message) -> [u8; Message::BYTESIZE] {
-        let mut buf = [0; Message::BYTESIZE];
-        message.encode(&mut buf);
-        buf
+        message.encode()
     }
 
     #[test]
@@ -153,10 +119,10 @@ mod tests {
         let message = message("hello");
         let buf = encoded(message);
 
-        let (_, res) = Reader::<{ Message::BYTESIZE }, Message>::new_with_data(&buf);
+        let (_, res) = Reader::<{ Message::BYTESIZE }>::new_with_data(&buf);
 
         match res {
-            Some(ReaderResult::Data(data)) => assert_eq!(data, message),
+            Some(ReaderResult::Data(data)) => assert_eq!(data, buf),
             other => panic!("unexpected result: {other:?}"),
         }
     }
@@ -166,26 +132,24 @@ mod tests {
         let message = message("hello");
         let buf = encoded(message);
         let (partial, rest) = buf.split_at(Message::BYTESIZE - 1);
-        let (mut reader, res) = Reader::<{ Message::BYTESIZE }, Message>::new_with_data(partial);
+        let (mut reader, res) = Reader::<{ Message::BYTESIZE }>::new_with_data(partial);
         let mut stream = Stream { data: rest };
         let fd = std::io::stdin();
 
         assert!(res.is_none());
         match reader.read_from(&mut stream, &fd) {
-            ReaderResult::Data(data) => assert_eq!(data, message),
+            ReaderResult::Data(data) => assert_eq!(data, buf),
             other => panic!("unexpected result: {other:?}"),
         }
     }
 
     #[test]
-    fn invalid_complete_leftover_is_returned_immediately() {
-        let (_, res) =
-            Reader::<{ Message::BYTESIZE }, Message>::new_with_data(&[0; Message::BYTESIZE]);
+    fn complete_leftover_is_not_decoded() {
+        let buf = [0; Message::BYTESIZE];
+        let (_, res) = Reader::<{ Message::BYTESIZE }>::new_with_data(&buf);
 
         match res {
-            Some(ReaderResult::Died(ReaderError::DecodeError(
-                MessageDecodeError::MalformedLength,
-            ))) => {}
+            Some(ReaderResult::Data(data)) => assert_eq!(data, buf),
             other => panic!("unexpected result: {other:?}"),
         }
     }

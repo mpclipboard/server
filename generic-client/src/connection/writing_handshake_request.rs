@@ -8,15 +8,15 @@ use crate::{
 use mpclipboard_shared::{
     error,
     event_loop::Wants,
-    handshake_request::HandshakeRequest,
-    writer::{Writer, WriterResult},
+    handshake_request::{HandshakeRequest, HandshakeRequestWriter},
+    writer::WriterResult,
 };
 use std::os::fd::{AsRawFd, BorrowedFd};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct WritingHandshakeRequest {
     fd: BorrowedFd<'static>,
-    writer: Writer<{ HandshakeRequest::BYTESIZE }, HandshakeRequest>,
+    writer: HandshakeRequestWriter,
     last_activity_at: u64,
 }
 
@@ -30,7 +30,7 @@ impl WritingHandshakeRequest {
 
         Self {
             fd,
-            writer: Writer::new(&handshake_req),
+            writer: HandshakeRequestWriter::new(&handshake_req),
             last_activity_at: now,
         }
     }

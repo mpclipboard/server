@@ -11,7 +11,7 @@ use std::os::fd::{AsRawFd, BorrowedFd};
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Connected {
     fd: BorrowedFd<'static>,
-    reader: Reader<{ Message::BYTESIZE }, Message>,
+    reader: Reader<{ Message::BYTESIZE }>,
     writer: MessageWriter,
 }
 
@@ -19,7 +19,7 @@ impl Connected {
     pub(crate) fn new(
         fd: BorrowedFd<'static>,
         data: &[u8],
-    ) -> (Self, Option<ReaderResult<{ Message::BYTESIZE }, Message>>) {
+    ) -> (Self, Option<ReaderResult<{ Message::BYTESIZE }>>) {
         let (reader, res) = Reader::new_with_data(data);
 
         (
@@ -63,7 +63,13 @@ impl Connected {
                 error!("failed to read({:?}): {err:?}", self.fd);
                 (self.disconnect(now), None)
             }
-            ReaderResult::Data(message) => (self.into(), Some(message)),
+            ReaderResult::Data(buf) => match Message::decode(&buf) {
+                Ok(message) => (self.into(), Some(message)),
+                Err(err) => {
+                    error!("failed to decode message from {:?}: {err:?}", self.fd);
+                    (self.disconnect(now), None)
+                }
+            },
         }
     }
 

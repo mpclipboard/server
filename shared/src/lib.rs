@@ -69,15 +69,3 @@ pub(crate) fn strip_prefix_ignore_ascii_case<'a>(line: &'a str, prefix: &str) ->
         None
     }
 }
-
-pub trait Encode<const BYTESIZE: usize> {
-    fn encode(&self, buf: &mut [u8; BYTESIZE]);
-}
-
-pub trait Decode<const BYTESIZE: usize> {
-    type Error: core::error::Error + Clone + Copy + std::fmt::Debug;
-
-    fn decode(buf: &[u8; BYTESIZE]) -> Result<Self, Self::Error>
-    where
-        Self: Sized;
-}

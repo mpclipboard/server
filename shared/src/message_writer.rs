@@ -1,5 +1,4 @@
 use crate::{
-    Encode,
     byte_stream::{ByteStream, WriteResult},
     message::Message,
     writebuf::Writebuf,
@@ -53,9 +52,7 @@ impl MessageWriter {
     }
 
     pub fn push(&mut self, data: &Message) {
-        let mut buf = [0; Message::BYTESIZE];
-        data.encode(&mut buf);
-        let item = Writebuf::new(buf);
+        let item = Writebuf::new(data.encode());
 
         match self {
             Self::Empty => {

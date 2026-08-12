@@ -1,18 +1,13 @@
 use crate::{
-    Encode,
     byte_stream::{ByteStream, WriteResult},
     writebuf::Writebuf,
 };
-use std::{marker::PhantomData, os::fd::AsFd};
+use std::os::fd::AsFd;
 
 #[expect(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Copy)]
-pub struct Writer<const N: usize, T>
-where
-    T: Encode<N>,
-{
+pub struct Writer<const N: usize> {
     writebuf: Writebuf<N>,
-    _phantom: PhantomData<T>,
 }
 
 #[derive(Debug)]
@@ -22,16 +17,10 @@ pub enum WriterResult {
     Died(WriterError),
 }
 
-impl<const N: usize, T> Writer<N, T>
-where
-    T: Encode<N>,
-{
-    pub fn new(data: &T) -> Self {
-        let mut buf = [0; N];
-        data.encode(&mut buf);
+impl<const N: usize> Writer<N> {
+    pub fn new(buf: [u8; N]) -> Self {
         Self {
             writebuf: Writebuf::new(buf),
-            _phantom: PhantomData,
         }
     }
 

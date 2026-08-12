@@ -1,8 +1,13 @@
 use crate::{
-    CONNECTION_UPGRADE_HEADER, Encode, UPGRADE_MPCLIPBOARD_RAW_HEADER,
-    http_lines_reader::HttpLinesParser, strip_prefix_ignore_ascii_case,
+    CONNECTION_UPGRADE_HEADER, UPGRADE_MPCLIPBOARD_RAW_HEADER,
+    byte_stream::ByteStream,
+    http_lines_reader::HttpLinesParser,
+    message::Message,
+    strip_prefix_ignore_ascii_case,
+    writer::{Writer, WriterResult},
 };
 use anyhow::Result;
+use std::os::fd::AsFd;
 
 #[derive(Debug, Clone, Copy)]
 pub struct HandshakeResponse;
@@ -15,9 +20,23 @@ Upgrade: mpclipboard-raw\r\n\
     pub const BYTESIZE: usize = Self::BYTES.len();
 }
 
-impl Encode<{ HandshakeResponse::BYTESIZE }> for HandshakeResponse {
-    fn encode(&self, buf: &mut [u8; HandshakeResponse::BYTESIZE]) {
-        buf.copy_from_slice(Self::BYTES);
+#[derive(Debug, Clone, Copy)]
+pub struct HandshakeResponseWriter {
+    inner: Writer<{ HandshakeResponse::BYTESIZE }>,
+}
+
+impl HandshakeResponseWriter {
+    pub fn new() -> Self {
+        let mut buf = [0; HandshakeResponse::BYTESIZE];
+        buf.copy_from_slice(HandshakeResponse::BYTES);
+
+        Self {
+            inner: Writer::new(buf),
+        }
+    }
+
+    pub fn write_to(&mut self, stream: &mut impl ByteStream, fd: &impl AsFd) -> WriterResult {
+        self.inner.write_to(stream, fd)
     }
 }
 
@@ -27,6 +46,9 @@ pub struct HandshakeResponseParser {
     seen_connection_upgrade: bool,
     seen_upgrade_mpclipboard_raw: bool,
 }
+
+pub type HandshakeResponseReader =
+    crate::http_lines_reader::HttpLinesReader<HandshakeResponseParser, { Message::BYTESIZE }>;
 
 impl HttpLinesParser for HandshakeResponseParser {
     type Output = ();

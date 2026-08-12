@@ -5,8 +5,8 @@ use crate::connection::{
 use mpclipboard_shared::{
     error,
     event_loop::Wants,
-    handshake_response::HandshakeResponseParser,
-    http_lines_reader::{HttpLinesParser, HttpLinesReader, HttpLinesReaderResult},
+    handshake_response::{HandshakeResponseParser, HandshakeResponseReader},
+    http_lines_reader::{HttpLinesParser, HttpLinesReaderResult},
     message::Message,
     reader::ReaderResult,
     tcp_keep_alive::enable_tcp_keep_alive,
@@ -17,7 +17,7 @@ use std::os::fd::{AsRawFd, BorrowedFd};
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ReadingHandshakeResponse {
     fd: BorrowedFd<'static>,
-    reader: HttpLinesReader<HandshakeResponseParser>,
+    reader: HandshakeResponseReader,
     last_activity_at: u64,
 }
 
@@ -25,7 +25,7 @@ impl ReadingHandshakeResponse {
     pub(crate) fn new(fd: BorrowedFd<'static>, now: u64) -> Self {
         Self {
             fd,
-            reader: HttpLinesReader::new(HandshakeResponseParser::new()),
+            reader: HandshakeResponseReader::new(HandshakeResponseParser::new()),
             last_activity_at: now,
         }
     }
@@ -73,7 +73,13 @@ impl ReadingHandshakeResponse {
                     warn!("Handshake leftover: {data:?}");
                     let (connected, res) = Connected::new(self.fd, data);
                     match res {
-                        Some(ReaderResult::Data(message)) => (connected.into(), Some(message)),
+                        Some(ReaderResult::Data(buf)) => match Message::decode(&buf) {
+                            Ok(message) => (connected.into(), Some(message)),
+                            Err(err) => {
+                                error!("failed to decode handshake leftover: {err:?}");
+                                (connected.disconnect(now), None)
+                            }
+                        },
                         Some(ReaderResult::Died(err)) => {
                             error!("failed to read handshake leftover: {err:?}");
                             (connected.disconnect(now), None)

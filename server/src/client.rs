@@ -15,7 +15,7 @@ use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 pub struct Client {
     fd: OwnedFd,
     id: ID,
-    reader: Reader<{ Message::BYTESIZE }, Message>,
+    reader: Reader<{ Message::BYTESIZE }>,
     writer: MessageWriter,
 }
 
@@ -69,9 +69,13 @@ impl Client {
                     error!("failed to read() for {self}: {err:?}");
                     return ClientResult::Died;
                 }
-                ReaderResult::Data(message) => {
-                    return ClientResult::Message((message, self));
-                }
+                ReaderResult::Data(buf) => match Message::decode(&buf) {
+                    Ok(message) => return ClientResult::Message((message, self)),
+                    Err(err) => {
+                        error!("failed to decode message for {self}: {err:?}");
+                        return ClientResult::Died;
+                    }
+                },
             }
         }
 

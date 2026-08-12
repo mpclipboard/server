@@ -1,4 +1,4 @@
-use crate::{Decode, Encode, NonEmptyInlineString};
+use crate::NonEmptyInlineString;
 use std::{
     num::NonZeroUsize,
     time::{SystemTime, UNIX_EPOCH},
@@ -35,16 +35,9 @@ impl Message {
     pub fn timestamp(&self) -> u128 {
         self.timestamp
     }
-}
 
-impl core::fmt::Debug for Message {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Text({:?} at {})", self.text_as_str(), self.timestamp)
-    }
-}
-
-impl Encode<{ Message::BYTESIZE }> for Message {
-    fn encode(&self, buf: &mut [u8; Message::BYTESIZE]) {
+    pub(crate) fn encode(&self) -> [u8; Self::BYTESIZE] {
+        let mut buf = [0; Self::BYTESIZE];
         let text = self.text_as_bytes();
         let len = u8::try_from(text.len()).unwrap_or_else(|_| unreachable!());
 
@@ -75,13 +68,19 @@ impl Encode<{ Message::BYTESIZE }> for Message {
         buf.get_mut(start..end)
             .unwrap_or_else(|| unreachable!())
             .copy_from_slice(text);
+
+        buf
     }
 }
 
-impl Decode<{ Message::BYTESIZE }> for Message {
-    type Error = MessageDecodeError;
+impl core::fmt::Debug for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Text({:?} at {})", self.text_as_str(), self.timestamp)
+    }
+}
 
-    fn decode(buf: &[u8; Message::BYTESIZE]) -> Result<Self, Self::Error> {
+impl Message {
+    pub fn decode(buf: &[u8; Self::BYTESIZE]) -> Result<Self, MessageDecodeError> {
         let (length, buf) = buf.split_first().unwrap_or_else(|| unreachable!());
         let length =
             NonZeroUsize::new(usize::from(*length)).ok_or(MessageDecodeError::MalformedLength)?;
@@ -138,10 +137,7 @@ mod tests {
     fn test_encode_decode() {
         let text = Message::new(S::new(&"a".repeat(10)).unwrap());
 
-        let mut buf = [0; Message::BYTESIZE];
-        text.encode(&mut buf);
-
-        assert_eq!(Message::decode(&buf), Ok(text));
+        assert_eq!(Message::decode(&text.encode()), Ok(text));
     }
 
     #[test]

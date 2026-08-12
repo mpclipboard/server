@@ -9,24 +9,14 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use mpclipboard_shared::{
-    ID, Timerfd, error, handshake_request::HandshakeRequestParser,
-    handshake_response::HandshakeResponse, info, message::Message,
-    revents::REvents,
-    store::Store,
-    tcp_keep_alive::enable_tcp_keep_alive,
-    trace,
+    ID, Timerfd, error, info, message::Message, revents::REvents, store::Store,
+    tcp_keep_alive::enable_tcp_keep_alive, trace,
 };
 use rustix::event::PollFlags;
 use std::{
     collections::HashMap,
     os::fd::{AsFd, AsRawFd},
 };
-
-type MessagingPreSource = PreSource<HandshakeRequestParser>;
-type MessagingPreSourceResult = PreSourceResult<HandshakeRequestParser>;
-
-type MessagingPreSink = PreSink<{ HandshakeResponse::BYTESIZE }, HandshakeResponse>;
-type MessagingPreSinkResult = PreSinkResult<{ HandshakeResponse::BYTESIZE }, HandshakeResponse>;
 
 pub struct MainLoop {
     timer: Timerfd,
@@ -35,8 +25,8 @@ pub struct MainLoop {
     store: Store,
 
     listener: TcpListener,
-    pre_sources: FdSet<20, MessagingPreSource>,
-    pre_sinks: FdSet<20, MessagingPreSink>,
+    pre_sources: FdSet<20, PreSource>,
+    pre_sinks: FdSet<20, PreSink>,
     clients: FdSet<20, Client>,
 }
 
@@ -51,8 +41,8 @@ impl MainLoop {
             .as_secs();
         trace!("start time: {now}");
 
-        let pre_sources = FdSet::<20, MessagingPreSource>::new();
-        let pre_sinks = FdSet::<20, MessagingPreSink>::new();
+        let pre_sources = FdSet::<20, PreSource>::new();
+        let pre_sinks = FdSet::<20, PreSink>::new();
         let clients = FdSet::<20, Client>::new();
 
         Ok(Self {
@@ -125,21 +115,21 @@ impl MainLoop {
             Ok(None) => return,
             Err(err) => unreachable!("failed to accept(): {err:?}"),
         };
-        let source = MessagingPreSource::new(fd, self.now);
+        let source = PreSource::new(fd, self.now);
         trace!("new {source}");
         self.pre_sources.insert(source);
     }
 
-    fn on_pre_source_event(&mut self, source: MessagingPreSource, revents: PollFlags) {
+    fn on_pre_source_event(&mut self, source: PreSource, revents: PollFlags) {
         match source.on_poll_event(revents, self.now) {
-            MessagingPreSourceResult::Died => {}
-            MessagingPreSourceResult::StillPending(source) => {
+            PreSourceResult::Died => {}
+            PreSourceResult::StillPending(source) => {
                 self.pre_sources.insert(source);
             }
-            MessagingPreSourceResult::Done((req, fd)) => {
+            PreSourceResult::Done((req, fd)) => {
                 let id = req.id;
                 if req.token == self.config.token {
-                    let sink = MessagingPreSink::new(fd, id, self.now, &HandshakeResponse);
+                    let sink = PreSink::new(fd, id, self.now);
                     info!("promoting {id} to {sink}");
                     self.pre_sinks.insert(sink);
                 } else {
@@ -149,13 +139,13 @@ impl MainLoop {
         }
     }
 
-    fn on_pre_sink_event(&mut self, sink: MessagingPreSink, revents: PollFlags) {
+    fn on_pre_sink_event(&mut self, sink: PreSink, revents: PollFlags) {
         match sink.on_poll_event(revents, self.now) {
-            MessagingPreSinkResult::Died => {}
-            MessagingPreSinkResult::StillPending(sink) => {
+            PreSinkResult::Died => {}
+            PreSinkResult::StillPending(sink) => {
                 self.pre_sinks.insert(sink);
             }
-            MessagingPreSinkResult::Done((id, fd)) => match enable_tcp_keep_alive(&fd) {
+            PreSinkResult::Done((id, fd)) => match enable_tcp_keep_alive(&fd) {
                 Ok(()) => {
                     let mut client = Client::new(fd, id);
                     info!("promoting {id} to {client}");

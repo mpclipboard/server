@@ -1,14 +1,12 @@
 use std::num::NonZeroUsize;
 
-use crate::message::Message;
-
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct HttpLinesBuffer {
-    buf: [u8; Message::BYTESIZE],
+pub(crate) struct HttpLinesBuffer<const N: usize> {
+    buf: [u8; N],
     pos: usize,
 }
 
-impl HttpLinesBuffer {
+impl<const N: usize> HttpLinesBuffer<N> {
     pub(crate) fn new() -> Self {
         Self {
             buf: [0; _],
@@ -35,7 +33,7 @@ impl HttpLinesBuffer {
         self.pos -= len;
     }
 
-    pub(crate) fn leftover(&self) -> ([u8; Message::BYTESIZE], usize) {
+    pub(crate) fn leftover(&self) -> ([u8; N], usize) {
         (self.buf, self.pos)
     }
 }
@@ -53,7 +51,7 @@ mod tests {
 
         let response = format!("{line1}{line2}{line3}{line4}\r\nABC");
 
-        let mut buffer = HttpLinesBuffer::new();
+        let mut buffer = HttpLinesBuffer::<128>::new();
         buffer.remainder()[..response.len()].copy_from_slice(response.as_bytes());
         buffer.received(NonZeroUsize::new(response.len()).unwrap());
 

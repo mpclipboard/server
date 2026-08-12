@@ -1,48 +1,35 @@
 use crate::{as_poll_fd::AsPollFd, reaper::CanBeReaped};
 use mpclipboard_shared::{
-    Encode, ID,
-    byte_stream::PlainByteStream,
-    error,
-    revents::REvents,
-    trace,
-    writer::{Writer, WriterResult},
+    ID, byte_stream::PlainByteStream, error, handshake_response::HandshakeResponseWriter,
+    revents::REvents, trace, writer::WriterResult,
 };
 use rustix::event::{PollFd, PollFlags};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 
-pub struct PreSink<const N: usize, T>
-where
-    T: Encode<N>,
-{
+pub struct PreSink {
     fd: OwnedFd,
     id: ID,
-    writer: Writer<N, T>,
+    writer: HandshakeResponseWriter,
     last_activity_at: u64,
 }
 
-pub enum PreSinkResult<const N: usize, T>
-where
-    T: Encode<N>,
-{
+pub enum PreSinkResult {
     Died,
-    StillPending(PreSink<N, T>),
+    StillPending(PreSink),
     Done((ID, OwnedFd)),
 }
 
-impl<const N: usize, T> PreSink<N, T>
-where
-    T: Encode<N>,
-{
-    pub(crate) fn new(fd: OwnedFd, id: ID, now: u64, data: &T) -> Self {
+impl PreSink {
+    pub(crate) fn new(fd: OwnedFd, id: ID, now: u64) -> Self {
         Self {
             fd,
             id,
-            writer: Writer::new(data),
+            writer: HandshakeResponseWriter::new(),
             last_activity_at: now,
         }
     }
 
-    pub(crate) fn on_poll_event(mut self, revents: PollFlags, now: u64) -> PreSinkResult<N, T> {
+    pub(crate) fn on_poll_event(mut self, revents: PollFlags, now: u64) -> PreSinkResult {
         let revents = match REvents::new(revents) {
             Ok(revents) => revents,
             Err(err) => {
@@ -77,19 +64,13 @@ where
     }
 }
 
-impl<const N: usize, T> CanBeReaped for PreSink<N, T>
-where
-    T: Encode<N>,
-{
+impl CanBeReaped for PreSink {
     fn last_activity_at(&self) -> u64 {
         self.last_activity_at
     }
 }
 
-impl<const N: usize, T> core::fmt::Display for PreSink<N, T>
-where
-    T: Encode<N>,
-{
+impl core::fmt::Display for PreSink {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
@@ -100,28 +81,19 @@ where
     }
 }
 
-impl<const N: usize, T> AsFd for PreSink<N, T>
-where
-    T: Encode<N>,
-{
+impl AsFd for PreSink {
     fn as_fd(&self) -> BorrowedFd<'_> {
         self.fd.as_fd()
     }
 }
 
-impl<const N: usize, T> AsRawFd for PreSink<N, T>
-where
-    T: Encode<N>,
-{
+impl AsRawFd for PreSink {
     fn as_raw_fd(&self) -> i32 {
         self.fd.as_raw_fd()
     }
 }
 
-impl<const N: usize, T> AsPollFd for PreSink<N, T>
-where
-    T: Encode<N>,
-{
+impl AsPollFd for PreSink {
     fn as_poll_fd(&self) -> PollFd<'_> {
         PollFd::new(&self.fd, PollFlags::OUT)
     }

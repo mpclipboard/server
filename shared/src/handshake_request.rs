@@ -1,11 +1,14 @@
 use crate::{
-    CONNECTION_UPGRADE_HEADER, Encode, HOST_PREFIX, Host, ID, ID_PREFIX, MAX_HOST_LENGTH,
-    MAX_ID_LENGTH, MAX_TOKEN_LENGTH, MIN_PADDING_LENGTH, PADDING_PREFIX, START_LINE, TOKEN_PREFIX,
-    Token, UPGRADE_MPCLIPBOARD_RAW_HEADER,
+    CONNECTION_UPGRADE_HEADER, HOST_PREFIX, Host, ID, ID_PREFIX, MAX_HOST_LENGTH, MAX_ID_LENGTH,
+    MAX_TOKEN_LENGTH, MIN_PADDING_LENGTH, PADDING_PREFIX, START_LINE, TOKEN_PREFIX, Token,
+    UPGRADE_MPCLIPBOARD_RAW_HEADER,
+    byte_stream::ByteStream,
     http_lines_reader::{HttpLinesParser, HttpLinesReader},
     strip_prefix_ignore_ascii_case,
+    writer::{Writer, WriterResult},
 };
 use anyhow::{Context, Result};
+use std::os::fd::AsFd;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HandshakeRequest {
@@ -33,8 +36,9 @@ impl HandshakeRequest {
         + MIN_PADDING_LENGTH;
 }
 
-impl Encode<{ HandshakeRequest::BYTESIZE }> for HandshakeRequest {
-    fn encode(&self, buf: &mut [u8; HandshakeRequest::BYTESIZE]) {
+impl HandshakeRequest {
+    fn encode(&self) -> [u8; Self::BYTESIZE] {
+        let mut buf = [0; Self::BYTESIZE];
         let mut pos = 0;
 
         macro_rules! append {
@@ -76,6 +80,24 @@ impl Encode<{ HandshakeRequest::BYTESIZE }> for HandshakeRequest {
         append!("\r\n");
 
         assert_eq!(pos, Self::BYTESIZE);
+        buf
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HandshakeRequestWriter {
+    inner: Writer<{ HandshakeRequest::BYTESIZE }>,
+}
+
+impl HandshakeRequestWriter {
+    pub fn new(request: &HandshakeRequest) -> Self {
+        Self {
+            inner: Writer::new(request.encode()),
+        }
+    }
+
+    pub fn write_to(&mut self, stream: &mut impl ByteStream, fd: &impl AsFd) -> WriterResult {
+        self.inner.write_to(stream, fd)
     }
 }
 
@@ -144,12 +166,13 @@ impl HttpLinesParser for HandshakeRequestParser {
     }
 }
 
-pub type HandshakeRequestReader = HttpLinesReader<HandshakeRequestParser>;
+pub type HandshakeRequestReader =
+    HttpLinesReader<HandshakeRequestParser, { HandshakeRequest::BYTESIZE }>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        Encode, MAX_HOST_LENGTH, MAX_ID_LENGTH, MAX_TOKEN_LENGTH, NonEmptyInlineString,
+        MAX_HOST_LENGTH, MAX_ID_LENGTH, MAX_TOKEN_LENGTH, NonEmptyInlineString,
         handshake_request::HandshakeRequest,
     };
 
@@ -172,10 +195,8 @@ mod tests {
             "\r\n"
         ].join("");
 
-        let mut buf = [0; _];
-        min.encode(&mut buf);
         assert_eq!(
-            core::str::from_utf8(&buf).map(|s| s.to_string()),
+            core::str::from_utf8(&min.encode()).map(|s| s.to_string()),
             Ok(expected)
         );
     }
@@ -199,10 +220,8 @@ mod tests {
             "\r\n"
         ].join("");
 
-        let mut buf = [0; _];
-        max.encode(&mut buf);
         assert_eq!(
-            core::str::from_utf8(&buf).map(|s| s.to_string()),
+            core::str::from_utf8(&max.encode()).map(|s| s.to_string()),
             Ok(expected)
         );
     }

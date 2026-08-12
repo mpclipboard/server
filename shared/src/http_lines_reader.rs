@@ -1,22 +1,21 @@
 use crate::{
     byte_stream::{ByteStream, ReadResult},
     http_lines_buffer::HttpLinesBuffer,
-    message::Message,
 };
 use anyhow::{Result, anyhow};
 use std::os::fd::AsFd;
 
 #[derive(Debug, Clone, Copy)]
-pub struct HttpLinesReader<P>
+pub struct HttpLinesReader<P, const N: usize>
 where
     P: HttpLinesParser,
 {
-    buf: HttpLinesBuffer,
+    buf: HttpLinesBuffer<N>,
     seen_end: bool,
     parser: P,
 }
 
-impl<P> HttpLinesReader<P>
+impl<P, const N: usize> HttpLinesReader<P, N>
 where
     P: HttpLinesParser,
 {
@@ -32,7 +31,7 @@ where
         &mut self,
         stream: &mut impl ByteStream,
         fd: &impl AsFd,
-    ) -> HttpLinesReaderResult<P> {
+    ) -> HttpLinesReaderResult<P, N> {
         loop {
             match stream.read_bytes(fd, self.buf.remainder()) {
                 ReadResult::Data(len) => {
@@ -76,12 +75,12 @@ where
     }
 }
 
-pub enum HttpLinesReaderResult<P>
+pub enum HttpLinesReaderResult<P, const N: usize>
 where
     P: HttpLinesParser,
 {
     Done {
-        buf: [u8; Message::BYTESIZE],
+        buf: [u8; N],
         len: usize,
         output: P::Output,
     },
