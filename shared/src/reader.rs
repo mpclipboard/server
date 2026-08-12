@@ -1,4 +1,4 @@
-use crate::{Decode, readbuf::Readbuf};
+use crate::{Decode, readbuf::Readbuf, trace};
 use rustix::io::Errno;
 use std::{marker::PhantomData, num::NonZeroUsize, os::fd::AsFd};
 
@@ -22,12 +22,20 @@ where
         }
     }
 
+    pub fn new_with_data(data: &[u8]) -> Self {
+        Self {
+            readbuf: Readbuf::new_with_data(data),
+            _phantom: PhantomData,
+        }
+    }
+
     pub fn read(&mut self, fd: &impl AsFd) -> ReaderResult<N, T> {
         loop {
             let res = rustix::io::read(fd, self.readbuf.remainder()).map(NonZeroUsize::new);
 
             match res {
                 Ok(Some(len)) => {
+                    trace!("received {len} bytes");
                     if let Some(buf) = self.readbuf.received(len) {
                         return match T::decode(&buf) {
                             Ok(data) => ReaderResult::Data(data),

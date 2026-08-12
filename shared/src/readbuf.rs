@@ -1,5 +1,7 @@
 use std::num::NonZeroUsize;
 
+use crate::trace;
+
 #[derive(Clone, Copy)]
 pub struct Readbuf<const N: usize> {
     buf: [u8; N],
@@ -11,6 +13,19 @@ impl<const N: usize> Readbuf<N> {
         Self {
             buf: [0; _],
             pos: 0,
+        }
+    }
+
+    pub fn new_with_data(data: &[u8]) -> Self {
+        assert!(data.len() <= N);
+        trace!("starting with {} leftover bytes", data.len());
+
+        let mut buf = [0; N];
+        buf[..data.len()].copy_from_slice(data);
+
+        Self {
+            buf,
+            pos: data.len(),
         }
     }
 
@@ -42,7 +57,7 @@ impl<const N: usize> Readbuf<N> {
 impl<const N: usize> core::fmt::Debug for Readbuf<N> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Readbuf")
-            .field("buf", &self.buf)
+            .field("buf", &core::str::from_utf8(&self.buf))
             .field("pos", &self.pos)
             .finish()
     }

@@ -5,14 +5,10 @@ use std::path::{Path, PathBuf};
 /// Representation of a runtime configuration
 #[derive(Clone, Copy)]
 pub(crate) struct Config {
-    /// URL of the main communication server
-    /// (e.g. `"http://127.0.0.1:3000"` or `"https://mpclipboard.me.dev"`)
-    pub(crate) main_url: Url,
+    /// URL of the server
+    /// (e.g. `"http://127.0.0.1:3000"` or `"https://mpclipboard.me.dev:443"`)
+    pub(crate) url: Url,
 
-    /// URL of the heartbeat server
-    pub(crate) heartbeat_url: Url,
-
-    /// Token that is used for authentication
     pub(crate) token: Token,
 
     /// Unique ID of the client
@@ -23,8 +19,7 @@ pub(crate) struct Config {
 impl std::fmt::Debug for Config {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Config")
-            .field("url", &self.main_url)
-            .field("heartbeat_url", &self.heartbeat_url)
+            .field("url", &self.url)
             .field("token", &"******")
             .field("id", &self.id)
             .finish()
@@ -32,25 +27,18 @@ impl std::fmt::Debug for Config {
 }
 
 impl Config {
-    pub(crate) fn new(main_url: &str, heartbeat_url: &str, token: &str, id: &str) -> Result<Self> {
-        let main_url = Url::parse(main_url).context("malformed main-url")?;
-        let heartbeat_url = Url::parse(heartbeat_url).context("malformed heartbeat-url")?;
+    pub(crate) fn new(url: &str, token: &str, id: &str) -> Result<Self> {
+        let url = Url::parse(url).context("malformed url")?;
         let token = Token::new(token).context("token is too long")?;
         let id = ID::new(id).context("id is too long")?;
 
-        Ok(Self {
-            main_url,
-            heartbeat_url,
-            token,
-            id,
-        })
+        Ok(Self { url, token, id })
     }
 
     fn read(path: impl AsRef<Path>) -> Result<Self> {
-        let [main_url, heartbeat_url, token, id] =
-            ConfigParser::parse(path, ["main-url", "heartbeat-url", "token", "id"])?;
+        let [url, token, id] = ConfigParser::parse(path, ["url", "token", "id"])?;
 
-        Self::new(&main_url, &heartbeat_url, &token, &id)
+        Self::new(&url, &token, &id)
     }
 
     pub(crate) fn read_local_file() -> Result<Self> {

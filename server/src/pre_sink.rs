@@ -1,6 +1,8 @@
-use crate::{as_poll_fd::AsPollFd, reaper::CanBeReaped, revents::REvents};
+use crate::{as_poll_fd::AsPollFd, reaper::CanBeReaped};
 use mpclipboard_shared::{
-    Encode, ID, error, trace,
+    Encode, ID, error,
+    revents::REvents,
+    trace,
     writer::{Writer, WriterResult},
 };
 use rustix::event::{PollFd, PollFlags};

@@ -1,9 +1,11 @@
 use crate::{
-    CONNECTION_UPGRADE_HEADER, Decode, Encode, HOST_PREFIX, Host, ID, ID_PREFIX, MAX_HOST_LENGTH,
-    MAX_ID_LENGTH, MAX_TOKEN_LENGTH, MIN_PADDING_LENGTH, NonEmptyInlineString, PADDING_PREFIX,
-    START_LINE, TOKEN_PREFIX, Token, UPGRADE_MPCLIPBOARD_RAW_HEADER,
+    CONNECTION_UPGRADE_HEADER, Encode, HOST_PREFIX, Host, ID, ID_PREFIX, MAX_HOST_LENGTH,
+    MAX_ID_LENGTH, MAX_TOKEN_LENGTH, MIN_PADDING_LENGTH, PADDING_PREFIX, START_LINE, TOKEN_PREFIX,
+    Token, UPGRADE_MPCLIPBOARD_RAW_HEADER,
+    http_lines_reader::{HttpLinesParser, HttpLinesReader},
     strip_prefix_ignore_ascii_case,
 };
+use anyhow::{Context, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HandshakeRequest {
@@ -22,8 +24,6 @@ const BASE_HANDSHAKE_LENGTH: usize = START_LINE.len() + 2 // start line
     + UPGRADE_MPCLIPBOARD_RAW_HEADER.len() + 2 // Upgrade: mpclipboard-raw
     + PADDING_PREFIX.len() + 2 //
     + 2; // headers end marker
-
-const EXPECTED_LINES_COUNT: usize = 8;
 
 impl HandshakeRequest {
     pub const BYTESIZE: usize = BASE_HANDSHAKE_LENGTH
@@ -79,111 +79,69 @@ impl Encode<{ HandshakeRequest::BYTESIZE }> for HandshakeRequest {
     }
 }
 
-impl Decode<{ HandshakeRequest::BYTESIZE }> for HandshakeRequest {
-    type Error = HandshakeRequestDecodeError;
-
-    fn decode(buf: &[u8; HandshakeRequest::BYTESIZE]) -> Result<Self, Self::Error> {
-        let buf = core::str::from_utf8(buf).map_err(|_| HandshakeRequestDecodeError::NotUtf8)?;
-
-        let mut lines = buf.lines();
-        let lines_count = buf
-            .bytes()
-            .zip(buf.bytes().skip(1))
-            .filter(|(prev, next)| *prev == b'\r' && *next == b'\n')
-            .count();
-
-        if lines_count != EXPECTED_LINES_COUNT {
-            return Err(HandshakeRequestDecodeError::NotEnoughLines {
-                actual: lines_count,
-                expected: EXPECTED_LINES_COUNT,
-            });
-        }
-
-        macro_rules! next_line {
-            () => {
-                lines
-                    .next()
-                    .ok_or(HandshakeRequestDecodeError::NotEnoughLines {
-                        actual: lines_count,
-                        expected: EXPECTED_LINES_COUNT,
-                    })?
-            };
-        }
-
-        if !next_line!().eq_ignore_ascii_case(START_LINE) {
-            return Err(HandshakeRequestDecodeError::MalformedStatusLine);
-        }
-
-        let host = strip_prefix_ignore_ascii_case(next_line!(), HOST_PREFIX)
-            .and_then(NonEmptyInlineString::new)
-            .ok_or(HandshakeRequestDecodeError::MalformedHostHeader)?;
-
-        let token = strip_prefix_ignore_ascii_case(next_line!(), TOKEN_PREFIX)
-            .and_then(NonEmptyInlineString::new)
-            .ok_or(HandshakeRequestDecodeError::MalformedTokenHeader)?;
-
-        let id = strip_prefix_ignore_ascii_case(next_line!(), ID_PREFIX)
-            .and_then(NonEmptyInlineString::new)
-            .ok_or(HandshakeRequestDecodeError::MalformedIdHeader)?;
-
-        if !next_line!().eq_ignore_ascii_case(CONNECTION_UPGRADE_HEADER) {
-            return Err(HandshakeRequestDecodeError::MalformedConnectionUpgradeHeader);
-        }
-
-        if !next_line!().eq_ignore_ascii_case(UPGRADE_MPCLIPBOARD_RAW_HEADER) {
-            return Err(HandshakeRequestDecodeError::MalformedUpgradeMpclipboardRawHeader);
-        }
-
-        let padding = strip_prefix_ignore_ascii_case(next_line!(), PADDING_PREFIX)
-            .ok_or(HandshakeRequestDecodeError::MalformedPaddingHeader)?;
-        if padding.bytes().any(|b| b != b'P' && b != b'p') {
-            return Err(HandshakeRequestDecodeError::MalformedPaddingHeader);
-        }
-
-        if !next_line!().is_empty() {
-            return Err(HandshakeRequestDecodeError::MalformedEmptyTrailingLine);
-        }
-
-        Ok(Self { host, token, id })
-    }
-}
-
-#[expect(missing_docs)]
 #[derive(Debug, Clone, Copy)]
-pub enum HandshakeRequestDecodeError {
-    NotUtf8,
-    NotEnoughLines { actual: usize, expected: usize },
-    MalformedStatusLine,
-    MalformedHostHeader,
-    MalformedTokenHeader,
-    MalformedIdHeader,
-    MalformedConnectionUpgradeHeader,
-    MalformedUpgradeMpclipboardRawHeader,
-    MalformedPaddingHeader,
-    MalformedEmptyTrailingLine,
+pub struct HandshakeRequestParser {
+    seen_start_line: bool,
+    host: Option<Host>,
+    token: Option<Token>,
+    id: Option<ID>,
+    seen_connection_upgrade: bool,
+    seen_upgrade_mpclipboard_raw: bool,
 }
 
-impl core::fmt::Display for HandshakeRequestDecodeError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::NotUtf8 => write!(f, "NotUtf8"),
-            Self::NotEnoughLines { actual, expected } => f
-                .debug_struct("NotEnoughLines")
-                .field("actual", actual)
-                .field("expected", expected)
-                .finish(),
-            Self::MalformedStatusLine => write!(f, "MalformedStatusLine"),
-            Self::MalformedHostHeader => write!(f, "MalformedHostHeader"),
-            Self::MalformedTokenHeader => write!(f, "MalformedTokenHeader"),
-            Self::MalformedIdHeader => write!(f, "MalformedIdHeader"),
-            Self::MalformedConnectionUpgradeHeader => write!(f, "MalformedConnectionUpgradeHeader"),
-            Self::MalformedUpgradeMpclipboardRawHeader => {
-                write!(f, "MalformedUpgradeMpclipboardRawHeader")
-            }
-            Self::MalformedPaddingHeader => write!(f, "MalformedPaddingHeader"),
-            Self::MalformedEmptyTrailingLine => write!(f, "MalformedEmptyTrailingLine"),
+impl HttpLinesParser for HandshakeRequestParser {
+    type Output = HandshakeRequest;
+
+    fn new() -> Self {
+        Self {
+            seen_start_line: false,
+            host: None,
+            token: None,
+            id: None,
+            seen_connection_upgrade: false,
+            seen_upgrade_mpclipboard_raw: false,
+        }
+    }
+
+    fn line_received(&mut self, line: &str) -> Result<()> {
+        if line.starts_with(START_LINE) {
+            self.seen_start_line = true;
+        } else if let Some(value) = strip_prefix_ignore_ascii_case(line, HOST_PREFIX)
+            && let Some(value) = value.strip_suffix("\r\n")
+        {
+            self.host = Some(Host::new(value).context("malformed Host header")?);
+        } else if let Some(value) = strip_prefix_ignore_ascii_case(line, TOKEN_PREFIX)
+            && let Some(value) = value.strip_suffix("\r\n")
+        {
+            self.token = Some(Token::new(value).context("malformed Token header")?);
+        } else if let Some(value) = strip_prefix_ignore_ascii_case(line, ID_PREFIX)
+            && let Some(value) = value.strip_suffix("\r\n")
+        {
+            self.id = Some(ID::new(value).context("malformed ID header")?);
+        } else if strip_prefix_ignore_ascii_case(line, CONNECTION_UPGRADE_HEADER) == Some("\r\n") {
+            self.seen_connection_upgrade = true;
+        } else if strip_prefix_ignore_ascii_case(line, UPGRADE_MPCLIPBOARD_RAW_HEADER)
+            == Some("\r\n")
+        {
+            self.seen_upgrade_mpclipboard_raw = true;
+        }
+
+        Ok(())
+    }
+
+    fn try_finish(&self) -> Option<Self::Output> {
+        if self.seen_start_line
+            && let Some(host) = self.host
+            && let Some(token) = self.token
+            && let Some(id) = self.id
+            && self.seen_connection_upgrade
+            && self.seen_upgrade_mpclipboard_raw
+        {
+            Some(HandshakeRequest { host, token, id })
+        } else {
+            None
         }
     }
 }
 
-impl core::error::Error for HandshakeRequestDecodeError {}
+pub type HandshakeRequestReader = HttpLinesReader<HandshakeRequestParser>;

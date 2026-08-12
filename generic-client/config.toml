@@ -1,4 +1,3 @@
-main-url = "http://127.0.0.1:3000"
-heartbeat-url = "http://127.0.0.1:3010"
+url = "http://127.0.0.1:3000"
 token = "sekret"
 id = "generic-client"

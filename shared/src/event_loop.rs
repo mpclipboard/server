@@ -12,8 +12,7 @@ pub struct EventLoop {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     timer: Timerfd,
 
-    fd1: FdState,
-    fd2: FdState,
+    fd: FdState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,14 +25,12 @@ pub enum Wants {
 #[derive(Debug)]
 pub struct EventLoopResult {
     pub time: Option<u64>,
-    pub fd1: Option<(bool, bool, bool)>,
-    pub fd2: Option<(bool, bool, bool)>,
+    pub fd: Option<(bool, bool, bool)>,
 }
 
 impl EventLoop {
     const TIMER_ID: u64 = 1;
-    const ID1: u64 = 2;
-    const ID2: u64 = 3;
+    const FD_ID: u64 = 2;
 
     #[cfg(target_os = "macos")]
     pub fn new() -> Result<Self> {
@@ -49,8 +46,7 @@ impl EventLoop {
         let mut this = Self {
             epoll_fd,
             timer: Timerfd::new(),
-            fd1: FdState::new(),
-            fd2: FdState::new(),
+            fd: FdState::new(),
         };
         this.add_timer()?;
 
@@ -63,37 +59,26 @@ impl EventLoop {
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    pub fn sync(
-        &mut self,
-        wants1: Option<(BorrowedFd<'static>, Wants)>,
-        wants2: Option<(BorrowedFd<'static>, Wants)>,
-    ) -> Result<()> {
-        let diffs = [
-            (Self::ID1, self.fd1.transition(wants1)),
-            (Self::ID2, self.fd2.transition(wants2)),
-        ];
-
-        for (id, diff) in diffs {
-            match diff {
-                Diff::Add { fd, wants } => {
-                    self.add(fd, id, wants)?;
-                }
-                Diff::Delete { fd } => {
-                    self.delete(fd)?;
-                }
-                Diff::Modify { fd, wants } => {
-                    self.modify(fd, id, wants)?;
-                }
-                Diff::Replace {
-                    prevfd,
-                    newfd,
-                    wants,
-                } => {
-                    self.delete(prevfd)?;
-                    self.add(newfd, id, wants)?;
-                }
-                Diff::Empty => {}
+    pub fn sync(&mut self, wants: Option<(BorrowedFd<'static>, Wants)>) -> Result<()> {
+        match self.fd.transition(wants) {
+            Diff::Add { fd, wants } => {
+                self.add(fd, Self::FD_ID, wants)?;
             }
+            Diff::Delete { fd } => {
+                self.delete(fd)?;
+            }
+            Diff::Modify { fd, wants } => {
+                self.modify(fd, Self::FD_ID, wants)?;
+            }
+            Diff::Replace {
+                prevfd,
+                newfd,
+                wants,
+            } => {
+                self.delete(prevfd)?;
+                self.add(newfd, Self::FD_ID, wants)?;
+            }
+            Diff::Empty => {}
         }
 
         Ok(())
@@ -112,8 +97,7 @@ impl EventLoop {
 
         let mut out = EventLoopResult {
             time: None,
-            fd1: None,
-            fd2: None,
+            fd: None,
         };
 
         for event in events.iter().take(len) {
@@ -123,23 +107,9 @@ impl EventLoop {
                     out.time = Some(time);
                 }
 
-                Self::ID1 => {
+                Self::FD_ID => {
                     let flags = epoll::Events::from_bits_retain(event.events);
-                    out.fd1 = Some((
-                        flags.contains(epoll::Events::EPOLLIN),
-                        flags.contains(epoll::Events::EPOLLOUT),
-                        flags.intersects(
-                            epoll::Events::EPOLLERR
-                                | epoll::Events::EPOLLHUP
-                                | epoll::Events::EPOLLRDHUP,
-                        ),
-                    ));
-                }
-
-                Self::ID2 => {
-                    let flags = epoll::Events::from_bits_retain(event.events);
-
-                    out.fd2 = Some((
+                    out.fd = Some((
                         flags.contains(epoll::Events::EPOLLIN),
                         flags.contains(epoll::Events::EPOLLOUT),
                         flags.intersects(

@@ -21,11 +21,9 @@ use config::Config;
 mod as_poll_fd;
 mod client;
 mod fd_set;
-mod heartbeat;
 mod pre_sink;
 mod pre_source;
 mod reaper;
-mod revents;
 mod tcp_listener;
 
 mod main_loop;

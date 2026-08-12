@@ -39,10 +39,6 @@ impl<const MAX: usize, T: AsFd> FdSet<MAX, T> {
     pub(crate) fn fds_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.map.values_mut()
     }
-
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&i32, &mut T)> {
-        self.map.iter_mut()
-    }
 }
 
 impl<const MAX: usize, T: AsFd + CanBeReaped> FdSet<MAX, T> {

@@ -49,10 +49,14 @@ pub use non_empty_inline_string::NonEmptyInlineString;
 
 pub mod config;
 pub mod event_loop;
-pub mod heartbeat;
 pub mod logger;
+pub mod revents;
 pub mod store;
+pub mod tcp_keep_alive;
 pub mod url;
+
+mod http_lines_buffer;
+pub mod http_lines_reader;
 
 pub(crate) fn strip_prefix_ignore_ascii_case<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
     let (pre, post) = line.split_at_checked(prefix.len())?;

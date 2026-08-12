@@ -1,4 +1,5 @@
 use crate::{Host, NonEmptyInlineString};
+use anyhow::{Context, Result, bail};
 use std::net::{SocketAddr, SocketAddrV4, ToSocketAddrs};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,23 +11,21 @@ pub struct Url {
 }
 
 impl Url {
-    pub fn parse(url: &str) -> Result<Self, ParseUrlError> {
+    pub fn parse(url: &str) -> Result<Self> {
         let (scheme, url) = url
             .split_once("://")
-            .ok_or(ParseUrlError::NoSeparatorBetweenSchemeAndHostPort)?;
+            .context("no :// separator in the URL")?;
         let (host, port) = url
             .split_once(":")
-            .ok_or(ParseUrlError::NoSeparatorBetweenHostAndPort)?;
+            .context("no : separator between host and post")?;
 
         let tls = match scheme {
             "http" => false,
             "https" => true,
-            _ => return Err(ParseUrlError::UnknownScheme),
+            _ => bail!("unknown URL scheme"),
         };
-        let host = NonEmptyInlineString::new(host).ok_or(ParseUrlError::HostIsTooLong)?;
-        let port = port
-            .parse::<u16>()
-            .map_err(|_| ParseUrlError::InvalidPort)?;
+        let host = NonEmptyInlineString::new(host).context("host is too long")?;
+        let port = port.parse::<u16>().context("invalid port")?;
 
         let header = NonEmptyInlineString::new(&format!("{}:{port}", host.as_str()))
             .unwrap_or_else(|| unreachable!());
@@ -39,10 +38,8 @@ impl Url {
         })
     }
 
-    pub fn resolve(&self) -> Result<SocketAddrV4, ResolveUrlError> {
-        let addrs = (self.host.as_str(), self.port)
-            .to_socket_addrs()
-            .map_err(ResolveUrlError::IoError)?;
+    pub fn resolve(&self) -> Result<SocketAddrV4> {
+        let addrs = (self.host.as_str(), self.port).to_socket_addrs()?;
 
         addrs
             .filter_map(|addr| match addr {
@@ -50,7 +47,7 @@ impl Url {
                 SocketAddr::V6(_) => None,
             })
             .next()
-            .ok_or(ResolveUrlError::CantResolveToIpV4)
+            .context("can't resolve URL to IPv4 address")
     }
 
     pub fn is_tls(&self) -> bool {
@@ -61,50 +58,6 @@ impl Url {
         self.header
     }
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParseUrlError {
-    NoSeparatorBetweenSchemeAndHostPort,
-    NoSeparatorBetweenHostAndPort,
-    UnknownScheme,
-    HostIsTooLong,
-    InvalidPort,
-}
-
-impl core::fmt::Display for ParseUrlError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::NoSeparatorBetweenSchemeAndHostPort => {
-                write!(f, "no :// separator between scheme and host:port")
-            }
-            Self::NoSeparatorBetweenHostAndPort => {
-                write!(f, "no : separator between host and port")
-            }
-            Self::UnknownScheme => write!(f, "unknown scheme (must be http or https)"),
-            Self::HostIsTooLong => write!(f, "host is too long (max 256 bytes)"),
-            Self::InvalidPort => write!(f, "invalid port"),
-        }
-    }
-}
-
-impl core::error::Error for ParseUrlError {}
-
-#[derive(Debug)]
-pub enum ResolveUrlError {
-    IoError(std::io::Error),
-    CantResolveToIpV4,
-}
-
-impl core::fmt::Display for ResolveUrlError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::IoError(err) => write!(f, "IoError({err})"),
-            Self::CantResolveToIpV4 => write!(f, "CantResolveToIpV4"),
-        }
-    }
-}
-
-impl core::error::Error for ResolveUrlError {}
 
 #[cfg(test)]
 mod tests {

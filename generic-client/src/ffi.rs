@@ -35,46 +35,18 @@ pub extern "C" fn mpclipboard_init() -> bool {
     }
 }
 
-// /// Reads the config based on the given instruction
-// /// (which is either "read from XDG dir" or "read from local ./config.toml").
-// /// In case of an error logs it and returns NULL.
-// #[unsafe(no_mangle)]
-// pub extern "C" fn mpclipboard_config_read(option: ConfigReadOption) -> *mut Config {
-//     let config = try_or_null!(Config::read(option));
-//     Box::leak(Box::new(config))
-// }
-
-// /// Constructs the config in-place based on given parameters that match fields 1-to-1.
-// /// In case of an error logs it and returns NULL.
-// #[unsafe(no_mangle)]
-// pub extern "C" fn mpclipboard_config_new(
-//     uri: *const c_char,
-//     heartbeat_uri: *const c_char,
-//     token: *const c_char,
-//     name: *const c_char,
-// ) -> *mut Config {
-//     let uri = cstring_to_str(uri);
-//     let heartbeat_uri = cstring_to_str(heartbeat_uri);
-//     let token = cstring_to_str(token);
-//     let name = cstring_to_str(name);
-//     let config = try_or_null!(Config::new(&uri, &heartbeat_uri, token, name));
-//     Box::leak(Box::new(config))
-// }
-
 /// Constructs a new `MPClipboard` using given options.
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_new_inline(
-    main_url: *const c_char,
-    heartbeat_url: *const c_char,
+    url: *const c_char,
     token: *const c_char,
     id: *const c_char,
 ) -> *mut MPClipboard {
-    let main_url = try_or_null!(cstring_to_str(main_url));
-    let heartbeat_url = try_or_null!(cstring_to_str(heartbeat_url));
+    let url = try_or_null!(cstring_to_str(url));
     let token = try_or_null!(cstring_to_str(token));
     let id = try_or_null!(cstring_to_str(id));
 
-    let mpclipboard = try_or_null!(MPClipboard::new_inline(main_url, heartbeat_url, token, id));
+    let mpclipboard = try_or_null!(MPClipboard::new_inline(url, token, id));
     Box::leak(Box::new(mpclipboard))
 }
 

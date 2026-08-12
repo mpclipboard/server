@@ -8,7 +8,7 @@ pub struct REvents {
 }
 
 impl REvents {
-    pub(crate) fn new(revents: PollFlags) -> Result<Self> {
+    pub fn new(revents: PollFlags) -> Result<Self> {
         if revents.intersects(PollFlags::HUP | PollFlags::ERR | PollFlags::NVAL) {
             bail!("got revents: {:?}", revents);
         }

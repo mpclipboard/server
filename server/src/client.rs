@@ -1,4 +1,4 @@
-use crate::{as_poll_fd::AsPollFd, revents::REvents};
+use crate::as_poll_fd::AsPollFd;
 use mpclipboard_shared::{
     ID, error,
     messaging::{
@@ -6,6 +6,7 @@ use mpclipboard_shared::{
         writer::{MessageWriter, MessageWriterResult},
     },
     reader::{Reader, ReaderResult},
+    revents::REvents,
     trace,
 };
 use rustix::event::{PollFd, PollFlags};

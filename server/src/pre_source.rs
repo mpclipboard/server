@@ -1,43 +1,44 @@
-use crate::{as_poll_fd::AsPollFd, reaper::CanBeReaped, revents::REvents};
+use crate::{as_poll_fd::AsPollFd, reaper::CanBeReaped};
 use mpclipboard_shared::{
-    Decode, error,
-    reader::{Reader, ReaderResult},
+    error,
+    http_lines_reader::{HttpLinesParser, HttpLinesReader, HttpLinesReaderResult},
+    revents::REvents,
     trace,
 };
 use rustix::event::{PollFd, PollFlags};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 
-pub struct PreSource<const N: usize, T>
+pub struct PreSource<P>
 where
-    T: Decode<N>,
+    P: HttpLinesParser,
 {
     fd: OwnedFd,
-    reader: Reader<N, T>,
+    reader: HttpLinesReader<P>,
     last_activity_at: u64,
 }
 
-pub enum PreSourceResult<const N: usize, T>
+pub enum PreSourceResult<P>
 where
-    T: Decode<N>,
+    P: HttpLinesParser,
 {
     Died,
-    StillPending(PreSource<N, T>),
-    Done((T, OwnedFd)),
+    StillPending(PreSource<P>),
+    Done((P::Output, OwnedFd)),
 }
 
-impl<const N: usize, T> PreSource<N, T>
+impl<P> PreSource<P>
 where
-    T: Decode<N>,
+    P: HttpLinesParser,
 {
     pub(crate) fn new(fd: OwnedFd, now: u64) -> Self {
         Self {
             fd,
-            reader: Reader::new(),
+            reader: HttpLinesReader::new(P::new()),
             last_activity_at: now,
         }
     }
 
-    pub(crate) fn on_poll_event(mut self, revents: PollFlags, now: u64) -> PreSourceResult<N, T> {
+    pub(crate) fn on_poll_event(mut self, revents: PollFlags, now: u64) -> PreSourceResult<P> {
         let revents = match REvents::new(revents) {
             Ok(revents) => revents,
             Err(err) => {
@@ -52,15 +53,22 @@ where
 
         if revents.readable {
             trace!("{self} is readable");
+
             match self.reader.read(&self.fd) {
-                ReaderResult::Data(req) => {
+                HttpLinesReaderResult::Done {
+                    buf,
+                    len,
+                    output: req,
+                } => {
+                    let buf = &buf[..len];
+                    assert!(buf.is_empty());
                     return PreSourceResult::Done((req, self.fd));
                 }
-                ReaderResult::StillPending => {
+                HttpLinesReaderResult::Pending => {
                     self.last_activity_at = now;
                     return PreSourceResult::StillPending(self);
                 }
-                ReaderResult::Died(err) => {
+                HttpLinesReaderResult::Err(err) => {
                     error!("{self} failed to read(): {err:?}");
                     return PreSourceResult::Died;
                 }
@@ -71,18 +79,18 @@ where
     }
 }
 
-impl<const N: usize, T> CanBeReaped for PreSource<N, T>
+impl<P> CanBeReaped for PreSource<P>
 where
-    T: Decode<N>,
+    P: HttpLinesParser,
 {
     fn last_activity_at(&self) -> u64 {
         self.last_activity_at
     }
 }
 
-impl<const N: usize, T> core::fmt::Display for PreSource<N, T>
+impl<P> core::fmt::Display for PreSource<P>
 where
-    T: Decode<N>,
+    P: HttpLinesParser,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
@@ -94,27 +102,27 @@ where
     }
 }
 
-impl<const N: usize, T> AsFd for PreSource<N, T>
+impl<P> AsFd for PreSource<P>
 where
-    T: Decode<N>,
+    P: HttpLinesParser,
 {
     fn as_fd(&self) -> BorrowedFd<'_> {
         self.fd.as_fd()
     }
 }
 
-impl<const N: usize, T> AsRawFd for PreSource<N, T>
+impl<P> AsRawFd for PreSource<P>
 where
-    T: Decode<N>,
+    P: HttpLinesParser,
 {
     fn as_raw_fd(&self) -> i32 {
         self.fd.as_raw_fd()
     }
 }
 
-impl<const N: usize, T> AsPollFd for PreSource<N, T>
+impl<P> AsPollFd for PreSource<P>
 where
-    T: Decode<N>,
+    P: HttpLinesParser,
 {
     fn as_poll_fd(&self) -> PollFd<'_> {
         PollFd::new(&self.fd, PollFlags::IN)

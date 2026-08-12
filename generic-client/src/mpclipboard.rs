@@ -43,8 +43,7 @@ impl MPClipboard {
             .as_secs();
         let conn = Connection::new(config)?;
 
-        let wants = conn.wants();
-        event_loop.sync(wants.conn, wants.heartbeat)?;
+        event_loop.sync(conn.wants())?;
 
         Ok(Self {
             event_loop,
@@ -54,8 +53,8 @@ impl MPClipboard {
         })
     }
 
-    pub fn new_inline(main_url: &str, heartbeat_url: &str, token: &str, id: &str) -> Result<Self> {
-        let config = Config::new(main_url, heartbeat_url, token, id)?;
+    pub fn new_inline(url: &str, token: &str, id: &str) -> Result<Self> {
+        let config = Config::new(url, token, id)?;
         Self::new(config)
     }
 
@@ -94,8 +93,7 @@ impl MPClipboard {
         }
         let next_connectivity = self.conn.connectivity();
 
-        let wants = self.conn.wants();
-        self.event_loop.sync(wants.conn, wants.heartbeat)?;
+        self.event_loop.sync(self.conn.wants())?;
 
         if prev_connectivity != next_connectivity {
             Ok(Some(Output::ConnectivityChanged {
@@ -115,35 +113,18 @@ impl MPClipboard {
             self.conn.tick(self.now);
         }
 
-        let [conn, heartbeat] = [polled.fd1, polled.fd2];
-
-        if let Some((readable, writable, has_error)) = heartbeat {
-            if has_error && !self.conn.is_disconnected() {
-                error!("poll() returned heartbeat error, disconnecting");
-                self.conn.disconnect(self.now);
-            }
-
-            if writable && !self.conn.is_disconnected() {
-                self.conn.on_heartbeat_writable(self.now);
-            }
-
-            if readable && !self.conn.is_disconnected() {
-                self.conn.on_heartbeat_readable(self.now);
-            }
-        }
-
-        if let Some((readable, writable, has_error)) = conn {
+        if let Some((readable, writable, has_error)) = polled.fd {
             if has_error && !self.conn.is_disconnected() {
                 error!("poll() returned connection error, disconnecting");
                 self.conn.disconnect(self.now);
             }
 
             if readable && !self.conn.is_disconnected() {
-                out = self.conn.on_main_conn_readable(self.now);
+                out = self.conn.on_readable(self.now);
             }
 
             if writable && !self.conn.is_disconnected() {
-                self.conn.on_main_conn_writable(self.now);
+                self.conn.on_writable(self.now);
             }
         }
 

@@ -17,15 +17,6 @@ use writing_handshake_request::WritingHandshakeRequest;
 mod reading_handshake_response;
 use reading_handshake_response::ReadingHandshakeResponse;
 
-mod connecting_to_heartbeat;
-use connecting_to_heartbeat::ConnectingToHeartbeat;
-
-mod writing_heartbeat_request;
-use writing_heartbeat_request::WritingHeartbeatRequest;
-
-mod reading_heartbeat_response;
-use reading_heartbeat_response::ReadingHeartbeatResponse;
-
 mod connected;
 use connected::Connected;
 
@@ -35,30 +26,18 @@ pub(crate) enum ConnectionState {
     Connecting(Connecting),
     WritingHandshakeRequest(WritingHandshakeRequest),
     ReadingHandshakeResponse(ReadingHandshakeResponse),
-    ConnectingToHeartbeat(ConnectingToHeartbeat),
-    WritingHeartbeatRequest(WritingHeartbeatRequest),
-    ReadingHeartbeatResponse(ReadingHeartbeatResponse),
     Connected(Connected),
-}
-
-macro_rules! for_each_connection_state {
-    ($value:expr => |$var:ident| $eval:expr) => {
-        match $value {
-            ConnectionState::Disconnected($var) => $eval,
-            ConnectionState::Connecting($var) => $eval,
-            ConnectionState::WritingHandshakeRequest($var) => $eval,
-            ConnectionState::ReadingHandshakeResponse($var) => $eval,
-            ConnectionState::ConnectingToHeartbeat($var) => $eval,
-            ConnectionState::WritingHeartbeatRequest($var) => $eval,
-            ConnectionState::ReadingHeartbeatResponse($var) => $eval,
-            ConnectionState::Connected($var) => $eval,
-        }
-    };
 }
 
 impl ConnectionState {
     fn name(&self) -> &'static str {
-        for_each_connection_state!(self => |s| s.name())
+        match self {
+            Self::Disconnected(_) => "Disconnected",
+            Self::Connecting(_) => "Connecting",
+            Self::WritingHandshakeRequest(_) => "WritingHandshakeRequest",
+            Self::ReadingHandshakeResponse(_) => "ReadingHandshakeResponse",
+            Self::Connected(_) => "Connected",
+        }
     }
 
     const fn connectivity(&self) -> Connectivity {
@@ -83,9 +62,6 @@ impl_connection_state_from!(Disconnected);
 impl_connection_state_from!(Connecting);
 impl_connection_state_from!(WritingHandshakeRequest);
 impl_connection_state_from!(ReadingHandshakeResponse);
-impl_connection_state_from!(ConnectingToHeartbeat);
-impl_connection_state_from!(WritingHeartbeatRequest);
-impl_connection_state_from!(ReadingHeartbeatResponse);
 impl_connection_state_from!(Connected);
 
 #[derive(Debug)]
@@ -103,9 +79,21 @@ impl Connection {
     }
 
     pub(crate) fn tick(&mut self, now: u64) {
-        for_each_connection_state!(self.state => |s| {
-            self.transition(s.tick(now, &self.config));
-        });
+        match self.state {
+            ConnectionState::Disconnected(s) => {
+                self.transition(s.try_reconnect(now, &self.config));
+            }
+            ConnectionState::Connecting(s) => {
+                self.transition(s.disconnect_if_stuck(now));
+            }
+            ConnectionState::WritingHandshakeRequest(s) => {
+                self.transition(s.disconnect_if_stuck(now));
+            }
+            ConnectionState::ReadingHandshakeResponse(s) => {
+                self.transition(s.disconnect_if_stuck(now));
+            }
+            ConnectionState::Connected(_) => {}
+        }
     }
 
     pub(crate) fn push(&mut self, message: Message) -> bool {
@@ -118,45 +106,75 @@ impl Connection {
     }
 
     pub(crate) fn disconnect(&mut self, now: u64) {
-        for_each_connection_state!(self.state => |s| {
-            self.transition(s.disconnect(now));
-        });
+        match self.state {
+            ConnectionState::Disconnected(_) => {
+                unreachable!("can't disconnect() in Disconnected state");
+            }
+            ConnectionState::Connecting(s) => {
+                self.transition(s.disconnect(now));
+            }
+            ConnectionState::WritingHandshakeRequest(s) => {
+                self.transition(s.disconnect(now));
+            }
+            ConnectionState::ReadingHandshakeResponse(s) => {
+                self.transition(s.disconnect(now));
+            }
+            ConnectionState::Connected(s) => {
+                self.transition(s.disconnect(now));
+            }
+        }
     }
 
     pub(crate) fn is_disconnected(&self) -> bool {
         matches!(self.state, ConnectionState::Disconnected(_))
     }
 
-    pub(crate) fn on_main_conn_readable(&mut self, now: u64) -> Option<Message> {
-        for_each_connection_state!(self.state => |s| {
-            let (next, incoming) = s.read_main_conn(now, &self.config);
-            self.transition(next);
-            incoming
-        })
+    pub(crate) fn on_readable(&mut self, now: u64) -> Option<Message> {
+        match self.state {
+            ConnectionState::ReadingHandshakeResponse(s) => {
+                self.transition(s.read(now));
+                None
+            }
+            ConnectionState::Connected(s) => {
+                let (next, incoming) = s.read(now);
+                self.transition(next);
+                incoming
+            }
+
+            ConnectionState::Disconnected(_)
+            | ConnectionState::Connecting(_)
+            | ConnectionState::WritingHandshakeRequest(_) => {
+                unreachable!("can't read() in {} state", self.state.name())
+            }
+        }
     }
 
-    pub(crate) fn on_main_conn_writable(&mut self, now: u64) {
-        for_each_connection_state!(self.state => |s| {
-            self.transition(s.write_main_conn(now, &self.config));
-        });
+    pub(crate) fn on_writable(&mut self, now: u64) {
+        match self.state {
+            ConnectionState::Connecting(s) => {
+                self.transition(s.finish(now, &self.config));
+            }
+            ConnectionState::WritingHandshakeRequest(s) => {
+                self.transition(s.write(now, &self.config));
+            }
+            ConnectionState::Connected(s) => {
+                self.transition(s.write(now));
+            }
+
+            ConnectionState::ReadingHandshakeResponse(_) | ConnectionState::Disconnected(_) => {
+                unreachable!("can't write() in {} state", self.state.name())
+            }
+        }
     }
 
-    pub(crate) fn on_heartbeat_readable(&mut self, now: u64) {
-        for_each_connection_state!(self.state => |s| {
-            self.transition(s.read_heartbeat(now));
-        });
-    }
-
-    pub(crate) fn on_heartbeat_writable(&mut self, now: u64) {
-        for_each_connection_state!(self.state => |s| {
-            self.transition(s.write_heartbeat(now, &self.config));
-        });
-    }
-
-    pub(crate) fn wants(&self) -> ConnectionWants {
-        for_each_connection_state!(self.state => |s| {
-            s.wants()
-        })
+    pub(crate) fn wants(&self) -> Option<(BorrowedFd<'static>, Wants)> {
+        match self.state {
+            ConnectionState::Disconnected(s) => s.wants(),
+            ConnectionState::Connecting(s) => s.wants(),
+            ConnectionState::WritingHandshakeRequest(s) => s.wants(),
+            ConnectionState::ReadingHandshakeResponse(s) => s.wants(),
+            ConnectionState::Connected(s) => s.wants(),
+        }
     }
 
     fn transition(&mut self, next: ConnectionState) {
@@ -173,106 +191,4 @@ impl Connection {
     }
 }
 
-#[derive(Debug)]
-pub struct ConnectionWants {
-    pub conn: Option<(BorrowedFd<'static>, Wants)>,
-    pub heartbeat: Option<(BorrowedFd<'static>, Wants)>,
-}
-impl ConnectionWants {
-    pub(crate) fn nothing() -> Self {
-        Self {
-            conn: None,
-            heartbeat: None,
-        }
-    }
-}
-
-trait HasName {
-    fn name(&self) -> &'static str;
-}
-
-trait Disconnect {
-    fn disconnect(self, now: u64) -> ConnectionState;
-}
-
-trait ReadMainConn {
-    fn read_main_conn(self, _now: u64, _config: &Config) -> (ConnectionState, Option<Message>);
-}
-
-trait WriteMainConn {
-    fn write_main_conn(self, _now: u64, _config: &Config) -> ConnectionState;
-}
-
-trait ReadHeartbeat {
-    fn read_heartbeat(self, _now: u64) -> ConnectionState;
-}
-
-trait WriteHeartbeat {
-    fn write_heartbeat(self, _now: u64, _config: &Config) -> ConnectionState;
-}
-
-trait Tick {
-    const FREEZE_TIME_IN_SECS: u64 = 3;
-
-    fn tick(self, _now: u64, _config: &Config) -> ConnectionState;
-}
-
-trait ConnectionWantsTo {
-    fn wants(&self) -> ConnectionWants;
-}
-
-macro_rules! not_supported {
-    (ReadMainConn for $t:ty) => {
-        impl $crate::connection::ReadMainConn for $t {
-            fn read_main_conn(
-                self,
-                _now: u64,
-                _config: &$crate::config::Config,
-            ) -> (
-                $crate::connection::ConnectionState,
-                Option<mpclipboard_shared::messaging::message::Message>,
-            ) {
-                unreachable!("can't read() from main connection in {}", stringify!($ty))
-            }
-        }
-    };
-
-    (WriteMainConn for $t:ty) => {
-        impl $crate::connection::WriteMainConn for $t {
-            fn write_main_conn(
-                self,
-                _now: u64,
-                _config: &$crate::config::Config,
-            ) -> $crate::connection::ConnectionState {
-                unreachable!("can't write() from main connection in {}", stringify!($ty))
-            }
-        }
-    };
-
-    (ReadHeartbeat for $t:ty) => {
-        impl $crate::connection::ReadHeartbeat for $t {
-            fn read_heartbeat(self, _now: u64) -> $crate::connection::ConnectionState {
-                unreachable!(
-                    "can't read_heartbeat() from main connection in {}",
-                    stringify!($ty)
-                )
-            }
-        }
-    };
-
-    (WriteHeartbeat for $t:ty) => {
-        impl $crate::connection::WriteHeartbeat for $t {
-            fn write_heartbeat(
-                self,
-                _now: u64,
-                _config: &$crate::config::Config,
-            ) -> $crate::connection::ConnectionState {
-                unreachable!(
-                    "can't write_heartbeat() from main connection in {}",
-                    stringify!($ty)
-                )
-            }
-        }
-    };
-}
-pub(crate) use not_supported;
+const FREEZE_TIME_IN_SECS: u64 = 3;
