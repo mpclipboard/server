@@ -1,6 +1,6 @@
 use crate::{Connectivity, config::Config};
 use anyhow::Result;
-use mpclipboard_shared::{error, event_loop::Wants, info, messaging::message::Message};
+use mpclipboard_shared::{error, event_loop::Wants, info, message::Message};
 use std::os::fd::BorrowedFd;
 
 mod helpers;

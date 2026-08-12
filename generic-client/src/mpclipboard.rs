@@ -4,7 +4,7 @@ use mpclipboard_shared::{
     NonEmptyInlineString, error,
     event_loop::{EventLoop, EventLoopResult},
     info,
-    messaging::message::Message,
+    message::Message,
     store::Store,
     trace,
 };

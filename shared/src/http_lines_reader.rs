@@ -1,7 +1,7 @@
 use crate::{
     byte_stream::{ByteStream, ReadResult},
     http_lines_buffer::HttpLinesBuffer,
-    messaging::message::Message,
+    message::Message,
 };
 use anyhow::{Result, anyhow};
 use std::os::fd::AsFd;

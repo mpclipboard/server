@@ -3,10 +3,8 @@ use mpclipboard_shared::{
     ID,
     byte_stream::PlainByteStream,
     error,
-    messaging::{
-        message::Message,
-        writer::{MessageWriter, MessageWriterResult},
-    },
+    message::Message,
+    message_writer::{MessageWriter, MessageWriterResult},
     reader::{Reader, ReaderResult},
     revents::REvents,
     trace,

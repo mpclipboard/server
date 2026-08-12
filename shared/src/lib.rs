@@ -13,12 +13,14 @@
 #![warn(clippy::std_instead_of_core)]
 #![doc = include_str!("../README.md")]
 
-pub mod messaging;
-
 mod readbuf;
 mod writebuf;
 
 pub mod byte_stream;
+pub mod handshake_request;
+pub mod handshake_response;
+pub mod message;
+pub mod message_writer;
 pub mod reader;
 pub mod writer;
 

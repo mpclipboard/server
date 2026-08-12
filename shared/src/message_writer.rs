@@ -1,7 +1,7 @@
 use crate::{
     Encode,
     byte_stream::{ByteStream, WriteResult},
-    messaging::message::Message,
+    message::Message,
     writebuf::Writebuf,
 };
 use std::{num::NonZeroUsize, os::fd::AsFd};

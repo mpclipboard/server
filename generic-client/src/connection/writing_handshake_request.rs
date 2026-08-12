@@ -8,7 +8,7 @@ use crate::{
 use mpclipboard_shared::{
     error,
     event_loop::Wants,
-    messaging::handshake::request::HandshakeRequest,
+    handshake_request::HandshakeRequest,
     writer::{Writer, WriterResult},
 };
 use std::os::fd::{AsRawFd, BorrowedFd};

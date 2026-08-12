@@ -1,6 +1,6 @@
 use std::num::NonZeroUsize;
 
-use crate::messaging::message::Message;
+use crate::message::Message;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct HttpLinesBuffer {

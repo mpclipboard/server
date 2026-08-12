@@ -5,8 +5,9 @@ use crate::connection::{
 use mpclipboard_shared::{
     error,
     event_loop::Wants,
+    handshake_response::HandshakeResponseParser,
     http_lines_reader::{HttpLinesParser, HttpLinesReader, HttpLinesReaderResult},
-    messaging::{handshake::response::HandshakeResponseParser, message::Message},
+    message::Message,
     reader::ReaderResult,
     tcp_keep_alive::enable_tcp_keep_alive,
     trace, warn,

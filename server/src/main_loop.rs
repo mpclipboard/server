@@ -9,11 +9,8 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use mpclipboard_shared::{
-    ID, Timerfd, error, info,
-    messaging::{
-        handshake::{request::HandshakeRequestParser, response::HandshakeResponse},
-        message::Message,
-    },
+    ID, Timerfd, error, handshake_request::HandshakeRequestParser,
+    handshake_response::HandshakeResponse, info, message::Message,
     revents::REvents,
     store::Store,
     tcp_keep_alive::enable_tcp_keep_alive,

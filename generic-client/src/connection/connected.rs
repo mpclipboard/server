@@ -2,10 +2,8 @@ use crate::connection::{ConnectionState, disconnected::Disconnected, stream::Str
 use mpclipboard_shared::{
     error,
     event_loop::Wants,
-    messaging::{
-        message::Message,
-        writer::{MessageWriter, MessageWriterResult},
-    },
+    message::Message,
+    message_writer::{MessageWriter, MessageWriterResult},
     reader::{Reader, ReaderResult},
 };
 use std::os::fd::{AsRawFd, BorrowedFd};

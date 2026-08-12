@@ -1,4 +1,4 @@
-use crate::messaging::message::Message;
+use crate::message::Message;
 
 pub struct Store {
     text: Option<Message>,

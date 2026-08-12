@@ -109,7 +109,7 @@ mod tests {
     use crate::{
         Encode, NonEmptyInlineString,
         byte_stream::{ByteStream, WriteResult},
-        messaging::message::{Message, MessageDecodeError},
+        message::{Message, MessageDecodeError},
     };
     use core::num::NonZeroUsize;
     use std::os::fd::AsFd;
