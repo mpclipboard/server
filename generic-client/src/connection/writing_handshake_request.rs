@@ -2,7 +2,7 @@ use crate::{
     config::Config,
     connection::{
         ConnectionState, FREEZE_TIME_IN_SECS, disconnected::Disconnected,
-        reading_handshake_response::ReadingHandshakeResponse,
+        reading_handshake_response::ReadingHandshakeResponse, stream::Stream,
     },
 };
 use mpclipboard_shared::{
@@ -35,8 +35,8 @@ impl WritingHandshakeRequest {
         }
     }
 
-    pub(crate) fn wants(&self) -> Option<(BorrowedFd<'static>, Wants)> {
-        Some((self.fd, Wants::Write))
+    pub(crate) fn wants(&self, stream: &Stream) -> Option<(BorrowedFd<'static>, Wants)> {
+        Some((self.fd, stream.wants(Wants::Write)))
     }
 
     pub(crate) fn disconnect_if_stuck(self, now: u64) -> ConnectionState {
@@ -52,8 +52,13 @@ impl WritingHandshakeRequest {
         Disconnected::new(now).into()
     }
 
-    pub(crate) fn write(mut self, now: u64, _config: &Config) -> ConnectionState {
-        match self.writer.write(&self.fd) {
+    pub(crate) fn write(
+        mut self,
+        now: u64,
+        _config: &Config,
+        stream: &mut Stream,
+    ) -> ConnectionState {
+        match self.writer.write_to(stream, &self.fd) {
             WriterResult::Done => ReadingHandshakeResponse::new(self.fd, now).into(),
             WriterResult::StillPending => {
                 self.last_activity_at = now;

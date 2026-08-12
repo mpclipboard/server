@@ -1,5 +1,6 @@
 use crate::{as_poll_fd::AsPollFd, reaper::CanBeReaped};
 use mpclipboard_shared::{
+    byte_stream::PlainByteStream,
     error,
     http_lines_reader::{HttpLinesParser, HttpLinesReader, HttpLinesReaderResult},
     revents::REvents,
@@ -54,7 +55,7 @@ where
         if revents.readable {
             trace!("{self} is readable");
 
-            match self.reader.read(&self.fd) {
+            match self.reader.read_from(&mut PlainByteStream, &self.fd) {
                 HttpLinesReaderResult::Done {
                     buf,
                     len,

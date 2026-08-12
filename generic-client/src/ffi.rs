@@ -86,6 +86,15 @@ pub enum COutput {
         /// and its length
         len: usize,
     },
+    /// Connectivity changed and a new text clip was received
+    Both {
+        /// New connecivity
+        connectivity: Connectivity,
+        /// New text
+        ptr: *mut c_char,
+        /// and its length
+        len: usize,
+    },
     /// Ignore
     Ignore,
     /// Error
@@ -100,6 +109,14 @@ impl From<Output> for COutput {
             Output::NewText { text } => {
                 let (ptr, len) = string_to_c(text);
                 Self::NewText { ptr, len }
+            }
+            Output::Both { connectivity, text } => {
+                let (ptr, len) = string_to_c(text);
+                Self::Both {
+                    connectivity,
+                    ptr,
+                    len,
+                }
             }
         }
     }

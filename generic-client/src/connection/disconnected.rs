@@ -4,11 +4,14 @@ use crate::{
         ConnectionState,
         connecting::Connecting,
         helpers::{ConnectResult, connect},
+        stream::Stream,
+        tls_handshake::TlsHandshake,
         writing_handshake_request::WritingHandshakeRequest,
     },
 };
+use anyhow::Context as _;
 use mpclipboard_shared::{error, event_loop::Wants};
-use std::os::fd::BorrowedFd;
+use std::os::fd::{AsRawFd, BorrowedFd};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Disconnected {
@@ -28,27 +31,49 @@ impl Disconnected {
         None
     }
 
-    pub(crate) fn try_reconnect(self, now: u64, config: &Config) -> ConnectionState {
-        if now - self.last_activity_at >= Self::RECONNECT_AFTER {
-            self.reconnect(now, config)
-        } else {
-            self.into()
+    pub(crate) fn try_reconnect(mut self, now: u64, config: &Config) -> (ConnectionState, Stream) {
+        if now - self.last_activity_at < Self::RECONNECT_AFTER {
+            return (self.into(), Stream::empty());
         }
-    }
 
-    fn reconnect(&self, now: u64, config: &Config) -> ConnectionState {
         let addr = match config.url.resolve() {
             Ok(addr) => addr,
             Err(err) => {
                 error!("failed to get IP address of the url: {err:?}");
-                return Self::new(now).into();
+                self.last_activity_at = now;
+                return (self.into(), Stream::empty());
             }
         };
 
-        match connect(&addr) {
-            ConnectResult::Connected(fd) => WritingHandshakeRequest::new(fd, now, config).into(),
-            ConnectResult::StillPending(fd) => Connecting::new(fd, now).into(),
-            ConnectResult::Failed => Self::new(now).into(),
-        }
+        let (fd, connected_now) = match connect(&addr) {
+            ConnectResult::Connected(fd) => (fd, true),
+            ConnectResult::StillPending(fd) => (fd, false),
+            ConnectResult::Failed => {
+                self.last_activity_at = now;
+                return (self.into(), Stream::empty());
+            }
+        };
+
+        let stream = match Stream::new(&config.url).context("failed to create stream") {
+            Ok(stream) => stream,
+            Err(err) => {
+                error!("{err:?}");
+                unsafe { rustix::io::close(fd.as_raw_fd()) };
+                self.last_activity_at = now;
+                return (self.into(), Stream::empty());
+            }
+        };
+
+        let state = if connected_now {
+            if stream.is_tls() {
+                TlsHandshake::new(fd, now).into()
+            } else {
+                WritingHandshakeRequest::new(fd, now, config).into()
+            }
+        } else {
+            Connecting::new(fd, now).into()
+        };
+
+        (state, stream)
     }
 }

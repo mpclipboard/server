@@ -30,4 +30,4 @@ mod ffi;
 mod logger;
 mod mpclipboard;
 mod output;
-// mod tls;
+mod tls;

@@ -22,6 +22,28 @@ pub enum Wants {
     ReadWrite,
 }
 
+impl Wants {
+    pub fn merge(self, other: Self) -> Self {
+        let read = self.wants_read() || other.wants_read();
+        let write = self.wants_write() || other.wants_write();
+
+        match (read, write) {
+            (true, true) => Self::ReadWrite,
+            (true, false) => Self::Read,
+            (false, true) => Self::Write,
+            (false, false) => unreachable!("Wants always wants at least one event"),
+        }
+    }
+
+    fn wants_read(self) -> bool {
+        matches!(self, Self::Read | Self::ReadWrite)
+    }
+
+    fn wants_write(self) -> bool {
+        matches!(self, Self::Write | Self::ReadWrite)
+    }
+}
+
 #[derive(Debug)]
 pub struct EventLoopResult {
     pub time: Option<u64>,

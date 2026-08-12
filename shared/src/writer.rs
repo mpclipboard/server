@@ -1,6 +1,9 @@
-use crate::{Encode, writebuf::Writebuf};
-use rustix::io::Errno;
-use std::{marker::PhantomData, num::NonZeroUsize, os::fd::AsFd};
+use crate::{
+    Encode,
+    byte_stream::{ByteStream, WriteResult},
+    writebuf::Writebuf,
+};
+use std::{marker::PhantomData, os::fd::AsFd};
 
 #[expect(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Copy)]
@@ -12,7 +15,7 @@ where
     _phantom: PhantomData<T>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum WriterResult {
     Done,
     StillPending,
@@ -32,26 +35,24 @@ where
         }
     }
 
-    pub fn write(&mut self, fd: &impl AsFd) -> WriterResult {
+    pub fn write_to(&mut self, stream: &mut impl ByteStream, fd: &impl AsFd) -> WriterResult {
         loop {
-            let res = rustix::io::write(fd, self.writebuf.remainder()).map(NonZeroUsize::new);
-
-            match res {
-                Ok(Some(len)) => {
+            match stream.write_bytes(fd, self.writebuf.remainder()) {
+                WriteResult::Data(len) => {
                     if self.writebuf.written(len) {
                         return WriterResult::Done;
                     }
                 }
-                Ok(None) => return WriterResult::Died(WriterError::EOF),
-                Err(Errno::AGAIN) => return WriterResult::StillPending,
-                Err(errno) => return WriterResult::Died(WriterError::Errno(errno)),
+                WriteResult::Eof => return WriterResult::Died(WriterError::EOF),
+                WriteResult::WouldBlock => return WriterResult::StillPending,
+                WriteResult::Err(err) => return WriterResult::Died(WriterError::Transport(err)),
             }
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum WriterError {
     EOF,
-    Errno(Errno),
+    Transport(anyhow::Error),
 }

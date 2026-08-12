@@ -1,8 +1,8 @@
 use crate::{
     config::Config,
     connection::{
-        ConnectionState, FREEZE_TIME_IN_SECS, disconnected::Disconnected,
-        writing_handshake_request::WritingHandshakeRequest,
+        ConnectionState, FREEZE_TIME_IN_SECS, disconnected::Disconnected, stream::Stream,
+        tls_handshake::TlsHandshake, writing_handshake_request::WritingHandshakeRequest,
     },
 };
 use mpclipboard_shared::{error, event_loop::Wants};
@@ -39,9 +39,15 @@ impl Connecting {
         Disconnected::new(now).into()
     }
 
-    pub(crate) fn finish(self, now: u64, config: &Config) -> ConnectionState {
+    pub(crate) fn finish(self, now: u64, config: &Config, stream: &Stream) -> ConnectionState {
         match rustix::net::sockopt::socket_error(self.fd) {
-            Ok(Ok(())) => WritingHandshakeRequest::new(self.fd, now, config).into(),
+            Ok(Ok(())) => {
+                if stream.is_tls() {
+                    TlsHandshake::new(self.fd, now).into()
+                } else {
+                    WritingHandshakeRequest::new(self.fd, now, config).into()
+                }
+            }
             Ok(Err(err)) | Err(err) => {
                 error!("socket_error returned error: {err:?}");
                 self.disconnect(now)

@@ -44,6 +44,10 @@ fn main() -> Result<()> {
                         println!("{connectivity:?}")
                     }
                     Output::NewText { text } => println!("[{text}]"),
+                    Output::Both { connectivity, text } => {
+                        println!("{connectivity:?}");
+                        println!("[{text}]");
+                    }
                 }
             }
         }

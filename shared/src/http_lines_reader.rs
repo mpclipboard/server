@@ -1,7 +1,10 @@
-use crate::{http_lines_buffer::HttpLinesBuffer, messaging::message::Message};
+use crate::{
+    byte_stream::{ByteStream, ReadResult},
+    http_lines_buffer::HttpLinesBuffer,
+    messaging::message::Message,
+};
 use anyhow::{Result, anyhow};
-use rustix::io::Errno;
-use std::{num::NonZeroUsize, os::fd::AsFd};
+use std::os::fd::AsFd;
 
 #[derive(Debug, Clone, Copy)]
 pub struct HttpLinesReader<P>
@@ -25,10 +28,14 @@ where
         }
     }
 
-    pub fn read(&mut self, fd: &impl AsFd) -> HttpLinesReaderResult<P> {
+    pub fn read_from(
+        &mut self,
+        stream: &mut impl ByteStream,
+        fd: &impl AsFd,
+    ) -> HttpLinesReaderResult<P> {
         loop {
-            match rustix::io::read(fd, self.buf.remainder()).map(NonZeroUsize::new) {
-                Ok(Some(len)) => {
+            match stream.read_bytes(fd, self.buf.remainder()) {
+                ReadResult::Data(len) => {
                     self.buf.received(len);
 
                     while let Some(line) = self.buf.line()
@@ -59,9 +66,9 @@ where
                         return HttpLinesReaderResult::Done { buf, len, output };
                     }
                 }
-                Ok(None) => return HttpLinesReaderResult::Err(anyhow!("EOF")),
-                Err(Errno::AGAIN) => return HttpLinesReaderResult::Pending,
-                Err(err) => {
+                ReadResult::Eof => return HttpLinesReaderResult::Err(anyhow!("EOF")),
+                ReadResult::WouldBlock => return HttpLinesReaderResult::Pending,
+                ReadResult::Err(err) => {
                     return HttpLinesReaderResult::Err(anyhow!("failed to read(): {err:?}"));
                 }
             }

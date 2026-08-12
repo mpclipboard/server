@@ -1,6 +1,8 @@
 use crate::{as_poll_fd::AsPollFd, reaper::CanBeReaped};
 use mpclipboard_shared::{
-    Encode, ID, error,
+    Encode, ID,
+    byte_stream::PlainByteStream,
+    error,
     revents::REvents,
     trace,
     writer::{Writer, WriterResult},
@@ -56,7 +58,7 @@ where
         if revents.writable {
             trace!("{self} is writable");
 
-            match self.writer.write(&self.fd) {
+            match self.writer.write_to(&mut PlainByteStream, &self.fd) {
                 WriterResult::Done => {
                     return PreSinkResult::Done((self.id, self.fd));
                 }

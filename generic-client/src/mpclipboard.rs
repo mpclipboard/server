@@ -1,4 +1,4 @@
-use crate::{Output, config::Config, connection::Connection, logger::Logger};
+use crate::{Output, config::Config, connection::Connection, logger::Logger, tls::TLS};
 use anyhow::{Context, Result};
 use mpclipboard_shared::{
     NonEmptyInlineString, error,
@@ -30,7 +30,7 @@ impl MPClipboard {
     /// Returns an error if TLS initialization fails.
     pub fn init() -> Result<()> {
         Logger::init();
-        // TLS::init()?;
+        TLS::init()?;
         Ok(())
     }
 
@@ -80,28 +80,32 @@ impl MPClipboard {
     ///
     /// Returns an error if OS-specific event loop (epoll/kqueue) returns an error
     pub fn read(&mut self) -> Result<Option<Output>> {
-        let mut output = None;
         let polled = self.event_loop.wait(Some(Duration::from_secs(0)))?;
 
         let prev_connectivity = self.conn.connectivity();
-        if let Some(message) = self.drain(polled)
+        let message = if let Some(message) = self.drain(polled)
             && self.store.add(message)
         {
-            output = Some(Output::NewText {
-                text: message.text_as_str().to_string(),
-            })
-        }
+            Some(message.text_as_str().to_string())
+        } else {
+            None
+        };
         let next_connectivity = self.conn.connectivity();
 
         self.event_loop.sync(self.conn.wants())?;
 
-        if prev_connectivity != next_connectivity {
-            Ok(Some(Output::ConnectivityChanged {
-                connectivity: next_connectivity,
-            }))
+        let connectivity = if prev_connectivity == next_connectivity {
+            None
         } else {
-            Ok(output)
-        }
+            Some(next_connectivity)
+        };
+
+        Ok(match (connectivity, message) {
+            (Some(connectivity), Some(text)) => Some(Output::Both { connectivity, text }),
+            (Some(connectivity), None) => Some(Output::ConnectivityChanged { connectivity }),
+            (None, Some(text)) => Some(Output::NewText { text }),
+            (None, None) => None,
+        })
     }
 
     fn drain(&mut self, polled: EventLoopResult) -> Option<Message> {

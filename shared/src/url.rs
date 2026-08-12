@@ -54,6 +54,10 @@ impl Url {
         self.tls
     }
 
+    pub fn host(&self) -> &str {
+        self.host.as_str()
+    }
+
     pub fn header(&self) -> Host {
         self.header
     }

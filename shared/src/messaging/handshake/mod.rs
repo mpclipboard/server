@@ -61,30 +61,4 @@ mod tests {
             Ok(expected)
         );
     }
-
-    // #[test]
-    // fn test_decode_ok() {
-    //     let req = HandshakeRequest {
-    //         host: NonEmptyInlineString::new("h").unwrap(),
-    //         token: NonEmptyInlineString::new("t").unwrap(),
-    //         id: NonEmptyInlineString::new("i").unwrap(),
-    //     };
-
-    //     assert_eq!(
-    //         {
-    //             let mut buf = [0; _];
-    //             req.encode(&mut buf);
-    //             HandshakeRequest::decode(&buf).unwrap()
-    //         },
-    //         req
-    //     );
-    // }
-
-    // #[test]
-    // fn test_decode_err() {
-    //     assert_matches!(
-    //         HandshakeRequest::decode(&[b'x'; _]),
-    //         Err(HandshakeRequestDecodeError::MalformedHostHeader)
-    //     );
-    // }
 }

@@ -14,4 +14,11 @@ pub enum Output {
         /// New text
         text: String,
     },
+    /// Connectivity changed and a new text clip was received by the same read
+    Both {
+        /// New connecivity
+        connectivity: Connectivity,
+        /// New text
+        text: String,
+    },
 }

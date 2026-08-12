@@ -1,15 +1,21 @@
 use crate::{Connectivity, config::Config};
 use anyhow::Result;
-use mpclipboard_shared::{event_loop::Wants, info, messaging::message::Message};
+use mpclipboard_shared::{error, event_loop::Wants, info, messaging::message::Message};
 use std::os::fd::BorrowedFd;
 
 mod helpers;
+
+mod stream;
+use stream::Stream;
 
 mod disconnected;
 use disconnected::Disconnected;
 
 mod connecting;
 use connecting::Connecting;
+
+mod tls_handshake;
+use tls_handshake::TlsHandshake;
 
 mod writing_handshake_request;
 use writing_handshake_request::WritingHandshakeRequest;
@@ -24,6 +30,7 @@ use connected::Connected;
 pub(crate) enum ConnectionState {
     Disconnected(Disconnected),
     Connecting(Connecting),
+    TlsHandshake(TlsHandshake),
     WritingHandshakeRequest(WritingHandshakeRequest),
     ReadingHandshakeResponse(ReadingHandshakeResponse),
     Connected(Connected),
@@ -34,6 +41,7 @@ impl ConnectionState {
         match self {
             Self::Disconnected(_) => "Disconnected",
             Self::Connecting(_) => "Connecting",
+            Self::TlsHandshake(_) => "TlsHandshake",
             Self::WritingHandshakeRequest(_) => "WritingHandshakeRequest",
             Self::ReadingHandshakeResponse(_) => "ReadingHandshakeResponse",
             Self::Connected(_) => "Connected",
@@ -60,6 +68,7 @@ macro_rules! impl_connection_state_from {
 }
 impl_connection_state_from!(Disconnected);
 impl_connection_state_from!(Connecting);
+impl_connection_state_from!(TlsHandshake);
 impl_connection_state_from!(WritingHandshakeRequest);
 impl_connection_state_from!(ReadingHandshakeResponse);
 impl_connection_state_from!(Connected);
@@ -68,6 +77,7 @@ impl_connection_state_from!(Connected);
 pub struct Connection {
     state: ConnectionState,
     config: Config,
+    stream: Stream,
 }
 
 impl Connection {
@@ -75,15 +85,21 @@ impl Connection {
         Ok(Self {
             state: ConnectionState::Disconnected(Disconnected::new(0)),
             config,
+            stream: Stream::empty(),
         })
     }
 
     pub(crate) fn tick(&mut self, now: u64) {
         match self.state {
             ConnectionState::Disconnected(s) => {
-                self.transition(s.try_reconnect(now, &self.config));
+                let (next, stream) = s.try_reconnect(now, &self.config);
+                self.stream = stream;
+                self.transition(next);
             }
             ConnectionState::Connecting(s) => {
+                self.transition(s.disconnect_if_stuck(now));
+            }
+            ConnectionState::TlsHandshake(s) => {
                 self.transition(s.disconnect_if_stuck(now));
             }
             ConnectionState::WritingHandshakeRequest(s) => {
@@ -113,6 +129,9 @@ impl Connection {
             ConnectionState::Connecting(s) => {
                 self.transition(s.disconnect(now));
             }
+            ConnectionState::TlsHandshake(s) => {
+                self.transition(s.disconnect(now));
+            }
             ConnectionState::WritingHandshakeRequest(s) => {
                 self.transition(s.disconnect(now));
             }
@@ -131,14 +150,14 @@ impl Connection {
 
     pub(crate) fn on_readable(&mut self, now: u64) -> Option<Message> {
         match self.state {
+            ConnectionState::TlsHandshake(s) => {
+                self.with_stream(|stream, config| (s.advance(now, config, stream), None))
+            }
             ConnectionState::ReadingHandshakeResponse(s) => {
-                self.transition(s.read(now));
-                None
+                self.with_stream(|stream, _config| s.read(now, stream))
             }
             ConnectionState::Connected(s) => {
-                let (next, incoming) = s.read(now);
-                self.transition(next);
-                incoming
+                self.with_stream(|stream, _config| s.read(now, stream))
             }
 
             ConnectionState::Disconnected(_)
@@ -152,16 +171,29 @@ impl Connection {
     pub(crate) fn on_writable(&mut self, now: u64) {
         match self.state {
             ConnectionState::Connecting(s) => {
-                self.transition(s.finish(now, &self.config));
+                self.transition(s.finish(now, &self.config, &self.stream));
+            }
+            ConnectionState::TlsHandshake(s) => {
+                self.with_stream(|stream, config| (s.advance(now, config, stream), None));
             }
             ConnectionState::WritingHandshakeRequest(s) => {
-                self.transition(s.write(now, &self.config));
+                self.with_stream(|stream, config| (s.write(now, config, stream), None));
             }
             ConnectionState::Connected(s) => {
-                self.transition(s.write(now));
+                self.with_stream(|stream, _config| (s.write(now, stream), None));
             }
 
-            ConnectionState::ReadingHandshakeResponse(_) | ConnectionState::Disconnected(_) => {
+            ConnectionState::ReadingHandshakeResponse(s) => {
+                self.with_stream(|stream, _config| match stream.flush(&s.fd()) {
+                    Ok(()) => (s.into(), None),
+                    Err(err) => {
+                        error!("failed to flush TLS data: {err:?}");
+                        (s.disconnect(now), None)
+                    }
+                });
+            }
+
+            ConnectionState::Disconnected(_) => {
                 unreachable!("can't write() in {} state", self.state.name())
             }
         }
@@ -171,15 +203,20 @@ impl Connection {
         match self.state {
             ConnectionState::Disconnected(s) => s.wants(),
             ConnectionState::Connecting(s) => s.wants(),
-            ConnectionState::WritingHandshakeRequest(s) => s.wants(),
-            ConnectionState::ReadingHandshakeResponse(s) => s.wants(),
-            ConnectionState::Connected(s) => s.wants(),
+            ConnectionState::TlsHandshake(s) => s.wants(&self.stream),
+            ConnectionState::WritingHandshakeRequest(s) => s.wants(&self.stream),
+            ConnectionState::ReadingHandshakeResponse(s) => s.wants(&self.stream),
+            ConnectionState::Connected(s) => s.wants(&self.stream),
         }
     }
 
     fn transition(&mut self, next: ConnectionState) {
         let prev = self.state;
         self.state = next;
+
+        if matches!(next, ConnectionState::Disconnected(_)) {
+            self.stream = Stream::empty();
+        }
 
         if prev.name() != next.name() {
             info!("Transitioning {} -> {}", prev.name(), next.name())
@@ -188,6 +225,15 @@ impl Connection {
 
     pub(crate) fn connectivity(&self) -> Connectivity {
         self.state.connectivity()
+    }
+
+    fn with_stream(
+        &mut self,
+        f: impl FnOnce(&mut Stream, &Config) -> (ConnectionState, Option<Message>),
+    ) -> Option<Message> {
+        let (next, message) = f(&mut self.stream, &self.config);
+        self.transition(next);
+        message
     }
 }
 

@@ -1,6 +1,8 @@
 use crate::as_poll_fd::AsPollFd;
 use mpclipboard_shared::{
-    ID, error,
+    ID,
+    byte_stream::PlainByteStream,
+    error,
     messaging::{
         message::Message,
         writer::{MessageWriter, MessageWriterResult},
@@ -51,7 +53,7 @@ impl Client {
         if revents.writable {
             trace!("{self} is writable");
 
-            match self.writer.write(&self.fd) {
+            match self.writer.write_to(&mut PlainByteStream, &self.fd) {
                 MessageWriterResult::StillPending => {}
                 MessageWriterResult::Died(err) => {
                     error!("failed to write() for {self}: {err:?}");
@@ -63,7 +65,7 @@ impl Client {
         if revents.readable {
             trace!("{self} is readable");
 
-            match self.reader.read(&self.fd) {
+            match self.reader.read_from(&mut PlainByteStream, &self.fd) {
                 ReaderResult::StillPending => {}
                 ReaderResult::Died(err) => {
                     error!("failed to read() for {self}: {err:?}");

@@ -1,5 +1,9 @@
-use crate::{Encode, messaging::message::Message, writebuf::Writebuf};
-use rustix::io::Errno;
+use crate::{
+    Encode,
+    byte_stream::{ByteStream, WriteResult},
+    messaging::message::Message,
+    writebuf::Writebuf,
+};
 use std::{num::NonZeroUsize, os::fd::AsFd};
 
 #[expect(clippy::large_enum_variant)]
@@ -13,7 +17,7 @@ pub enum MessageWriter {
     },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum MessageWriterResult {
     StillPending,
     Died(MessageWriterError),
@@ -64,15 +68,19 @@ impl MessageWriter {
         }
     }
 
-    pub fn write(&mut self, fd: &impl AsFd) -> MessageWriterResult {
+    pub fn write_to(
+        &mut self,
+        stream: &mut impl ByteStream,
+        fd: &impl AsFd,
+    ) -> MessageWriterResult {
         while let Some(buf) = self.buf_to_write() {
-            let res = rustix::io::write(fd, buf).map(NonZeroUsize::new);
-
-            match res {
-                Ok(Some(len)) => self.written(len),
-                Ok(None) => return MessageWriterResult::Died(MessageWriterError::EOF),
-                Err(Errno::AGAIN) => return MessageWriterResult::StillPending,
-                Err(errno) => return MessageWriterResult::Died(MessageWriterError::Errno(errno)),
+            match stream.write_bytes(fd, buf) {
+                WriteResult::Data(len) => self.written(len),
+                WriteResult::Eof => return MessageWriterResult::Died(MessageWriterError::EOF),
+                WriteResult::WouldBlock => return MessageWriterResult::StillPending,
+                WriteResult::Err(err) => {
+                    return MessageWriterResult::Died(MessageWriterError::Transport(err));
+                }
             }
         }
 
@@ -84,8 +92,8 @@ impl MessageWriter {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum MessageWriterError {
     EOF,
-    Errno(Errno),
+    Transport(anyhow::Error),
 }

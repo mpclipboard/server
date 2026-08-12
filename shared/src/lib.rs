@@ -18,6 +18,7 @@ pub mod messaging;
 mod readbuf;
 mod writebuf;
 
+pub mod byte_stream;
 pub mod reader;
 pub mod writer;
 
