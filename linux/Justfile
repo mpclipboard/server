@@ -1,6 +1,6 @@
 [linux]
-dev:
-    RUST_LOG=debug cargo run
+dev log="info":
+    RUST_LOG_STYLE=always RUST_LOG={{log}} cargo run
 
 [linux]
 release version out:

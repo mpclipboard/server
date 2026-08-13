@@ -32,7 +32,6 @@ mod revents;
 mod tray;
 
 fn main() -> Result<()> {
-    MPClipboard::init()?;
     let mut mpclipboard = MPClipboard::new()?;
     let mut clipboard = LocalClipboared::new()?;
 
@@ -70,6 +69,12 @@ fn main() -> Result<()> {
                     tray.push(format!("R {text}"), &mut queue)?;
                     clipboard.offer_text(text)?;
                 }
+                Output::Both { connectivity, text } => {
+                    tray.set_connectivity(connectivity, &mut queue)?;
+
+                    tray.push(format!("R {text}"), &mut queue)?;
+                    clipboard.offer_text(text)?;
+                }
             }
         }
 
@@ -78,7 +83,7 @@ fn main() -> Result<()> {
         {
             log::trace!("Copied: {text:?}");
             tray.push(format!("S {text}"), &mut queue)?;
-            mpclipboard.push_text(text)?;
+            mpclipboard.push_text(&text);
         }
     }
 

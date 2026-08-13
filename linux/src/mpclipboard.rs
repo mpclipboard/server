@@ -1,25 +1,18 @@
 use anyhow::Result;
-use mpclipboard_generic_client::{Config, ConfigReadOption, Output};
+use mpclipboard_generic_client::Output;
 use rustix::event::{PollFd, PollFlags};
 
 pub(crate) struct MPClipboard {
     mpclipboard: mpclipboard_generic_client::MPClipboard,
 }
 
-const CONFIG_READ_OPTION: ConfigReadOption = if cfg!(debug_assertions) {
-    ConfigReadOption::FromLocalFile
-} else {
-    ConfigReadOption::FromXdgConfigDir
-};
-
 impl MPClipboard {
-    pub(crate) fn init() -> Result<()> {
-        mpclipboard_generic_client::MPClipboard::init()
-    }
-
     pub(crate) fn new() -> Result<Self> {
-        let config = Config::read(CONFIG_READ_OPTION)?;
-        let mpclipboard = mpclipboard_generic_client::MPClipboard::new(config)?;
+        let mpclipboard = if cfg!(debug_assertions) {
+            mpclipboard_generic_client::MPClipboard::new_with_local_config()?
+        } else {
+            mpclipboard_generic_client::MPClipboard::new_with_xdg_config()?
+        };
 
         Ok(Self { mpclipboard })
     }
@@ -32,7 +25,7 @@ impl MPClipboard {
         self.mpclipboard.read()
     }
 
-    pub(crate) fn push_text(&mut self, text: String) -> Result<bool> {
+    pub(crate) fn push_text(&mut self, text: &str) -> bool {
         self.mpclipboard.push_text(text)
     }
 }
