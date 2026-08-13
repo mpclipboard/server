@@ -32,8 +32,6 @@ impl MPClipboard {
     }
 
     fn new(config: Config) -> Result<Self> {
-        Self::init_once()?;
-
         info!("Running with config {config:?}");
         let mut event_loop = EventLoop::new().context("event loop has crashed")?;
         let now = std::time::SystemTime::now()
@@ -55,22 +53,26 @@ impl MPClipboard {
     }
 
     pub fn new_inline(url: &str, token: &str, id: &str) -> Result<Self> {
+        Self::init_once()?;
         let config = Config::new(url, token, id)?;
         Self::new(config)
     }
 
     pub fn new_with_local_config() -> Result<Self> {
+        Self::init_once()?;
         let config = Config::read_local_file()?;
         Self::new(config)
     }
 
     pub fn new_with_local_config_and_id_override(id: &str) -> Result<Self> {
+        Self::init_once()?;
         let mut config = Config::read_local_file()?;
         config.id = NonEmptyInlineString::new(id).context("malformed id override")?;
         Self::new(config)
     }
 
     pub fn new_with_xdg_config() -> Result<Self> {
+        Self::init_once()?;
         let config = Config::read_in_xdg_config_dir()?;
         Self::new(config)
     }

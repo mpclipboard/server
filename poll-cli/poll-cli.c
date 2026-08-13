@@ -14,21 +14,15 @@ static char *RED = "\033[31m";
 static char *GREEN = "\033[32m";
 static char *YELLOW = "\033[33m";
 static char *NC = "\033[0m";
-static char *INFO =
-    "\n\nThis is a demo of MPClipboard.\n"
-    "It reads lines from stdin and sends them to MPClipboard.\n"
-    "At the same time it polls MPClipboard and prints every received clip.\n\n";
+static char *INFO = "\n\nThis is a demo of MPClipboard.\n"
+                    "It reads lines from stdin and sends them to MPClipboard.\n"
+                    "At the same time it polls MPClipboard and prints every "
+                    "received clipboard string.\n\n";
 
 int main() {
   printf("%s%s%s\n", GREEN, INFO, NC);
 
-  assert(mpclipboard_init());
-
-  mpclipboard_Config *config =
-      mpclipboard_config_read(MPCLIPBOARD_CONFIG_READ_OPTION_FROM_LOCAL_FILE);
-  assert(config != NULL);
-
-  mpclipboard_MPClipboard *mpclipboard = mpclipboard_new(config);
+  mpclipboard_MPClipboard *mpclipboard = mpclipboard_new_with_local_config();
   assert(mpclipboard != NULL);
 
   int mpclipboard_fd = mpclipboard_get_fd(mpclipboard);
@@ -101,6 +95,11 @@ void print_output(mpclipboard_Output output) {
   case MPCLIPBOARD_OUTPUT_NEW_TEXT: {
     printf("%s%.*s%s\n", YELLOW, (int)output.NEW_TEXT.len, output.NEW_TEXT.ptr,
            NC);
+    break;
+  }
+  case MPCLIPBOARD_OUTPUT_BOTH: {
+    print_connectivity(output.BOTH.connectivity);
+    printf("%s%.*s%s\n", YELLOW, (int)output.BOTH.len, output.BOTH.ptr, NC);
     break;
   }
   case MPCLIPBOARD_OUTPUT_IGNORE: {
