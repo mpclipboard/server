@@ -1,10 +1,11 @@
 use crate::{Output, config::Config, connection::Connection, logger::Logger, tls::TLS};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use mpclipboard_shared::{
     EventLoop, EventLoopResult, Message, NonEmptyInlineString, Store, error, info, trace,
 };
 use std::{
     os::fd::{AsFd, AsRawFd, BorrowedFd},
+    sync::OnceLock,
     time::Duration,
 };
 
@@ -16,13 +17,23 @@ pub struct MPClipboard {
 }
 
 impl MPClipboard {
-    pub fn init() -> Result<()> {
-        Logger::init();
-        TLS::init()?;
-        Ok(())
+    fn init_once() -> Result<()> {
+        static INIT: OnceLock<Result<()>> = OnceLock::new();
+
+        let result = INIT.get_or_init(|| {
+            Logger::init();
+            TLS::init()
+        });
+
+        match result {
+            Ok(()) => Ok(()),
+            Err(err) => bail!("{err:?}"),
+        }
     }
 
     fn new(config: Config) -> Result<Self> {
+        Self::init_once()?;
+
         info!("Running with config {config:?}");
         let mut event_loop = EventLoop::new().context("event loop has crashed")?;
         let now = std::time::SystemTime::now()

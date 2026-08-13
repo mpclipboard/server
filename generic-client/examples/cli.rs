@@ -17,8 +17,6 @@ fn print_help_and_exit() -> ! {
 }
 
 fn main() -> Result<()> {
-    MPClipboard::init()?;
-
     let [_, id] = std::env::args()
         .collect::<Vec<_>>()
         .try_into()

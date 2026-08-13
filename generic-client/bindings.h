@@ -44,8 +44,6 @@ typedef struct {
   };
 } mpclipboard_Output;
 
-bool mpclipboard_init(void);
-
 mpclipboard_MPClipboard *mpclipboard_new_inline(const char *url, const char *token, const char *id);
 
 mpclipboard_MPClipboard *mpclipboard_new_with_local_config(void);

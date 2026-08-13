@@ -25,16 +25,6 @@ fn string_to_c(s: String) -> (*mut c_char, usize) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_init() -> bool {
-    if let Err(err) = MPClipboard::init() {
-        error!("{err:?}");
-        false
-    } else {
-        true
-    }
-}
-
-#[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_new_inline(
     url: *const c_char,
     token: *const c_char,
