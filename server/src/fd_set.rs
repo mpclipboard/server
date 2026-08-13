@@ -9,17 +9,11 @@ pub struct FdSet<const MAX: usize, T: AsFd> {
     map: HashMap<i32, T>,
 }
 
-impl<const MAX: usize, T: AsFd> Default for FdSet<MAX, T> {
-    fn default() -> Self {
-        Self {
-            map: Default::default(),
-        }
-    }
-}
-
 impl<const MAX: usize, T: AsFd> FdSet<MAX, T> {
     pub(crate) fn new() -> Self {
-        Self::default()
+        Self {
+            map: HashMap::new(),
+        }
     }
 
     pub(crate) fn insert(&mut self, value: T) {
@@ -58,5 +52,11 @@ impl<const MAX: usize, T: AsFd + CanBeReaped> FdSet<MAX, T> {
 impl<const MAX: usize, T: AsFd + AsPollFd> FdSet<MAX, T> {
     pub(crate) fn as_poll_fds(&self) -> impl Iterator<Item = PollFd<'_>> {
         self.fds().map(|fd| fd.as_poll_fd())
+    }
+}
+
+impl<const MAX: usize, T: AsFd> Default for FdSet<MAX, T> {
+    fn default() -> Self {
+        Self::new()
     }
 }

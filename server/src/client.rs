@@ -12,6 +12,7 @@ pub struct Client {
     writer: MessageWriter,
 }
 
+#[expect(clippy::large_enum_variant)]
 pub enum ClientResult {
     Died,
     Message((Message, Client)),
@@ -19,7 +20,7 @@ pub enum ClientResult {
 }
 
 impl Client {
-    pub(crate) fn new(fd: OwnedFd, id: ID) -> Self {
+    pub(crate) const fn new(fd: OwnedFd, id: ID) -> Self {
         Self {
             fd,
             id,
@@ -69,7 +70,7 @@ impl Client {
         ClientResult::Pending(self)
     }
 
-    pub(crate) fn id(&self) -> ID {
+    pub(crate) const fn id(&self) -> ID {
         self.id
     }
 }

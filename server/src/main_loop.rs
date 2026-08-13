@@ -30,7 +30,7 @@ pub struct MainLoop {
 }
 
 impl MainLoop {
-    pub(crate) fn new(config: Config) -> Result<Self> {
+    pub(crate) fn new(config: &Config) -> Result<Self> {
         let listener = TcpListener::new(config.url.resolve()?)?;
 
         let timer = Timerfd::new()?;
@@ -48,7 +48,7 @@ impl MainLoop {
             listener,
             timer,
             now,
-            config,
+            config: *config,
             store: Store::empty(),
 
             pre_sources,

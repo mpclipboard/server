@@ -17,7 +17,7 @@ pub enum PreSinkResult {
 }
 
 impl PreSink {
-    pub(crate) fn new(fd: OwnedFd, id: ID, now: u64) -> Self {
+    pub(crate) const fn new(fd: OwnedFd, id: ID, now: u64) -> Self {
         Self {
             fd,
             id,

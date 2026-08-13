@@ -11,6 +11,7 @@ pub struct PreSource {
     last_activity_at: u64,
 }
 
+#[expect(clippy::large_enum_variant)]
 pub enum PreSourceResult {
     Died,
     Pending(PreSource),
@@ -43,9 +44,8 @@ impl PreSource {
             trace!("{self} is readable");
 
             match self.reader.read_from(&mut PlainByteStream, &self.fd) {
-                Ok(Some((req, buf, len))) => {
-                    let buf = &buf[..len];
-                    assert_eq!(buf, b"");
+                Ok(Some((req, _buf, len))) => {
+                    assert_eq!(len, 0);
                     return PreSourceResult::Done((req, self.fd));
                 }
                 Ok(None) => {

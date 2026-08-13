@@ -1,14 +1,12 @@
 use crate::as_poll_fd::AsPollFd;
 use anyhow::{Context, Result};
+use core::net::SocketAddrV4;
 use mpclipboard_shared::{REvents, info};
 use rustix::{
     event::{PollFd, PollFlags},
     net::{AddressFamily, SocketType},
 };
-use std::{
-    net::SocketAddrV4,
-    os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd},
-};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 
 pub struct TcpListener {
     fd: OwnedFd,
@@ -34,7 +32,7 @@ impl TcpListener {
             return Ok(None);
         }
 
-        let fd = rustix::net::accept(&self)?;
+        let fd = rustix::net::accept(self)?;
         rustix::io::ioctl_fionbio(&fd, true)?;
         Ok(Some(fd))
     }
