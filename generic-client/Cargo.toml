@@ -17,6 +17,7 @@ mpclipboard-shared = { path = "../shared" }
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.15"
 jni = { version = "0.22", default-features = false }
+log = "0.4"
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 env_logger = { version = "0.11", default-features = false, features = [

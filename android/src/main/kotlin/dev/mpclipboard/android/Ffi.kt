@@ -10,8 +10,9 @@ internal object Ffi {
 
     const val MPCLIPBOARD_OUTPUT_CONNECTIVITY_CHANGED = 0
     const val MPCLIPBOARD_OUTPUT_NEW_TEXT = 1
-    const val MPCLIPBOARD_OUTPUT_IGNORE = 2
-    const val MPCLIPBOARD_OUTPUT_ERROR = 3
+    const val MPCLIPBOARD_OUTPUT_BOTH = 2
+    const val MPCLIPBOARD_OUTPUT_IGNORE = 3
+    const val MPCLIPBOARD_OUTPUT_ERROR = 4
 
     fun loadLibrary(context: Context) {
         try {
@@ -34,17 +35,13 @@ internal object Ffi {
     }
 
     @JvmStatic
-    external fun mpclipboard_init(): Boolean
-
-    @JvmStatic
     external fun mpclipboard_setup_rustls_on_jvm(context: Context)
 
     @JvmStatic
-    external fun mpclipboard_config_new(uri: ByteArray, token: ByteArray, name: ByteArray): Long
+    external fun mpclipboard_new_inline(uri: ByteArray, token: ByteArray, name: ByteArray): Long
 
     @JvmStatic
-    @JvmStatic
-    external fun mpclipboard_new(configPtr: Long): Long
+    external fun mpclipboard_drop(clientPtr: Long)
 
     @JvmStatic
     external fun mpclipboard_get_fd(clientPtr: Long): Int

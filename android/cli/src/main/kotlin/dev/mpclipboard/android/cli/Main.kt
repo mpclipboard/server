@@ -102,6 +102,10 @@ object Main {
         when (output) {
             is Output.ConnectivityChanged -> printConnectivity(output.connectivity)
             is Output.NewText -> println("${YELLOW}${output.text}$NC")
+            is Output.Both -> {
+                printConnectivity(output.connectivity)
+                println("${YELLOW}${output.text}$NC")
+            }
         }
     }
 }

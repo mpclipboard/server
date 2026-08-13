@@ -61,6 +61,7 @@ class MPClipboardConnectionManager(
         startJob?.cancel()
         startJob = null
         unregisterFileDescriptorListener()
+        client?.close()
         client = null
         setConnectivity(Connectivity.Disconnected)
     }
@@ -83,6 +84,7 @@ class MPClipboardConnectionManager(
             MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT,
         ) { _, events ->
             if ((events and MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR) != 0) {
+                mpclipboard.close()
                 client = null
                 setConnectivity(Connectivity.Disconnected)
                 return@addOnFileDescriptorEventListener 0
@@ -111,6 +113,10 @@ class MPClipboardConnectionManager(
         when (val output = mpclipboard.read()) {
             is Output.ConnectivityChanged -> setConnectivity(output.connectivity)
             is Output.NewText -> mutableIncomingText.tryEmit(output.text)
+            is Output.Both -> {
+                setConnectivity(output.connectivity)
+                mutableIncomingText.tryEmit(output.text)
+            }
             null -> Unit
         }
     }

@@ -14,15 +14,14 @@ class MPClipboard private constructor(
         @JvmStatic
         fun init(context: Context): Boolean {
             synchronized(lock) {
-                Ffi.loadLibrary(context.applicationContext)
-                Ffi.mpclipboard_setup_rustls_on_jvm(context.applicationContext)
-
                 if (didInit) {
                     return true
                 }
 
-                didInit = Ffi.mpclipboard_init()
-                return didInit
+                Ffi.loadLibrary(context.applicationContext)
+                Ffi.mpclipboard_setup_rustls_on_jvm(context.applicationContext)
+                didInit = true
+                return true
             }
         }
 
@@ -30,16 +29,11 @@ class MPClipboard private constructor(
         fun initialize(host: String, token: String, name: String): MPClipboard? {
             check(didInit) { "MPClipboard.init() must be called first" }
 
-            val config = Ffi.mpclipboard_config_new(
+            val mpclipboard = Ffi.mpclipboard_new_inline(
                 host.toByteArray(Charsets.UTF_8),
                 token.toByteArray(Charsets.UTF_8),
                 name.toByteArray(Charsets.UTF_8),
             )
-            if (config == 0L) {
-                return null
-            }
-
-            val mpclipboard = Ffi.mpclipboard_new(config)
             if (mpclipboard == 0L) {
                 return null
             }
@@ -56,5 +50,12 @@ class MPClipboard private constructor(
 
     fun pushText(text: String): Boolean {
         return Ffi.mpclipboard_push_text(ptr, text.toByteArray(Charsets.UTF_8))
+    }
+
+    fun close() {
+        if (ptr != 0L) {
+            Ffi.mpclipboard_drop(ptr)
+            ptr = 0L
+        }
     }
 }

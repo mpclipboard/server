@@ -64,10 +64,10 @@ RUN ls -l /rustls-platform-verifier.aar
 
 FROM builder AS generic-client-builder
 
-WORKDIR /build/clip
-COPY clip/Cargo.toml ./
-COPY clip/README.md  ./
-COPY clip/src        ./src
+WORKDIR /build/shared
+COPY shared/Cargo.toml ./
+COPY shared/README.md  ./
+COPY shared/src        ./src
 
 WORKDIR /build/generic-client
 COPY generic-client/src        ./src

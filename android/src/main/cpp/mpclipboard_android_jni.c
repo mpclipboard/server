@@ -65,13 +65,6 @@ static jobject new_output(JNIEnv *env, jint tag, jint connectivity, jbyteArray t
     return (*env)->NewObject(env, cls, ctor, tag, connectivity, text);
 }
 
-JNIEXPORT jboolean JNICALL
-Java_dev_mpclipboard_android_Ffi_mpclipboard_1init(JNIEnv *env, jclass clazz) {
-    (void) env;
-    (void) clazz;
-    return mpclipboard_init();
-}
-
 JNIEXPORT void JNICALL
 Java_dev_mpclipboard_android_Ffi_mpclipboard_1setup_1rustls_1on_1jvm(
     JNIEnv *env,
@@ -83,7 +76,7 @@ Java_dev_mpclipboard_android_Ffi_mpclipboard_1setup_1rustls_1on_1jvm(
 }
 
 JNIEXPORT jlong JNICALL
-Java_dev_mpclipboard_android_Ffi_mpclipboard_1config_1new(
+Java_dev_mpclipboard_android_Ffi_mpclipboard_1new_1inline(
     JNIEnv *env,
     jclass clazz,
     jbyteArray uri,
@@ -103,23 +96,13 @@ Java_dev_mpclipboard_android_Ffi_mpclipboard_1config_1new(
         return 0;
     }
 
-    mpclipboard_Config *config = mpclipboard_config_new(uri_bytes, token_bytes, name_bytes);
+    mpclipboard_MPClipboard *mpclipboard =
+        mpclipboard_new_inline(uri_bytes, token_bytes, name_bytes);
     free(uri_bytes);
     free(token_bytes);
     free(name_bytes);
 
-    return (jlong) (intptr_t) config;
-}
-
-JNIEXPORT jlong JNICALL
-Java_dev_mpclipboard_android_Ffi_mpclipboard_1new(
-    JNIEnv *env,
-    jclass clazz,
-    jlong config_ptr
-) {
-    (void) env;
-    (void) clazz;
-    return (jlong) (intptr_t) mpclipboard_new((mpclipboard_Config *) (intptr_t) config_ptr);
+    return (jlong) (intptr_t) mpclipboard;
 }
 
 JNIEXPORT jint JNICALL
@@ -131,6 +114,20 @@ Java_dev_mpclipboard_android_Ffi_mpclipboard_1get_1fd(
     (void) env;
     (void) clazz;
     return mpclipboard_get_fd((mpclipboard_MPClipboard *) (intptr_t) client_ptr);
+}
+
+JNIEXPORT void JNICALL
+Java_dev_mpclipboard_android_Ffi_mpclipboard_1drop(
+    JNIEnv *env,
+    jclass clazz,
+    jlong client_ptr
+) {
+    (void) env;
+    (void) clazz;
+
+    if (client_ptr != 0) {
+        mpclipboard_drop((mpclipboard_MPClipboard *) (intptr_t) client_ptr);
+    }
 }
 
 JNIEXPORT jobject JNICALL
@@ -170,6 +167,30 @@ Java_dev_mpclipboard_android_Ffi_mpclipboard_1read(
 
             return new_output(env, (jint) output.tag, 0, text);
         }
+        case MPCLIPBOARD_OUTPUT_BOTH: {
+            jsize len = (jsize) output.BOTH.len;
+            jbyteArray text = (*env)->NewByteArray(env, len);
+            if (text == NULL) {
+                return NULL;
+            }
+            (*env)->SetByteArrayRegion(
+                env,
+                text,
+                0,
+                len,
+                (const jbyte *) output.BOTH.ptr
+            );
+            if ((*env)->ExceptionCheck(env)) {
+                return NULL;
+            }
+
+            return new_output(
+                env,
+                (jint) output.tag,
+                (jint) output.BOTH.connectivity,
+                text
+            );
+        }
         case MPCLIPBOARD_OUTPUT_IGNORE:
             return NULL;
         case MPCLIPBOARD_OUTPUT_ERROR:
@@ -201,23 +222,12 @@ Java_dev_mpclipboard_android_Ffi_mpclipboard_1push_1text(
         return JNI_FALSE;
     }
 
-    mpclipboard_PushResult result = mpclipboard_push_text(
+    bool sent = mpclipboard_push_text(
         (mpclipboard_MPClipboard *) (intptr_t) client_ptr,
         (const char *) bytes,
         (size_t) len
     );
     (*env)->ReleaseByteArrayElements(env, text, bytes, JNI_ABORT);
 
-    switch (result) {
-        case MPCLIPBOARD_PUSH_RESULT_SENT:
-            return JNI_TRUE;
-        case MPCLIPBOARD_PUSH_RESULT_DROPPED_AS_STALE:
-            return JNI_FALSE;
-        case MPCLIPBOARD_PUSH_RESULT_ERROR:
-            throw_runtime_exception(env, "mpclipboard_push_text failed");
-            return JNI_FALSE;
-        default:
-            throw_runtime_exception(env, "mpclipboard_push_text returned unknown result");
-            return JNI_FALSE;
-    }
+    return sent ? JNI_TRUE : JNI_FALSE;
 }

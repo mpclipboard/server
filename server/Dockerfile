@@ -2,9 +2,9 @@ FROM rust:1.95-alpine AS builder
 
 RUN apk add --no-cache musl-dev
 
-WORKDIR /build/clip
-COPY clip/Cargo.toml clip/README.md ./
-COPY clip/src ./src
+WORKDIR /build/shared
+COPY shared/Cargo.toml shared/README.md ./
+COPY shared/src ./src
 
 WORKDIR /build/server
 COPY server/Cargo.toml server/README.md ./
