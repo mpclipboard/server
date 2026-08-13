@@ -1,6 +1,5 @@
-use std::num::NonZeroUsize;
-
 use crate::trace;
+use core::num::NonZeroUsize;
 
 #[derive(Clone, Copy)]
 pub struct Readbuf<const N: usize> {
@@ -9,14 +8,14 @@ pub struct Readbuf<const N: usize> {
 }
 
 impl<const N: usize> Readbuf<N> {
-    pub fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             buf: [0; _],
             pos: 0,
         }
     }
 
-    pub fn new_with_data(data: &[u8]) -> Self {
+    pub(crate) fn new_with_data(data: &[u8]) -> Self {
         assert!(data.len() <= N);
         trace!("starting with {} leftover bytes", data.len());
 
@@ -29,11 +28,11 @@ impl<const N: usize> Readbuf<N> {
         }
     }
 
-    pub fn remainder(&mut self) -> &mut [u8] {
+    pub(crate) fn remainder(&mut self) -> &mut [u8] {
         &mut self.buf[self.pos..]
     }
 
-    pub fn received(&mut self, n: NonZeroUsize) -> Option<[u8; N]> {
+    pub(crate) fn received(&mut self, n: NonZeroUsize) -> Option<[u8; N]> {
         self.pos = self
             .pos
             .checked_add(n.get())

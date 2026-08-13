@@ -1,9 +1,7 @@
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use crate::{Timerfd, Wants};
-#[cfg(any(target_os = "linux", target_os = "android"))]
-use std::os::fd::RawFd;
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
-use std::time::Duration;
+use core::time::Duration;
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 
 pub struct EventLoop {
     #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -58,7 +56,7 @@ impl EventLoop {
                 self.add(fd, Self::FD_ID, wants)?;
             }
             Diff::Delete { fd } => {
-                self.delete(fd)?;
+                self.delete(fd);
             }
             Diff::Modify { fd, wants } => {
                 self.modify(fd, Self::FD_ID, wants)?;
@@ -68,7 +66,7 @@ impl EventLoop {
                 newfd,
                 wants,
             } => {
-                self.delete(prevfd)?;
+                self.delete(prevfd);
                 self.add(newfd, Self::FD_ID, wants)?;
             }
             Diff::Empty => {}
@@ -114,7 +112,7 @@ impl EventLoop {
 
                 _ => {
                     let id = event.data;
-                    return Err(std::io::Error::other(format!("unknown event {id}",)));
+                    return Err(std::io::Error::other(format!("unknown event {id}")));
                 }
             }
         }
@@ -134,14 +132,13 @@ impl EventLoop {
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    fn delete(&self, fd: BorrowedFd<'static>) -> std::io::Result<()> {
+    fn delete(&self, fd: BorrowedFd<'static>) {
         let _ = epoll::ctl(
             self.epoll_fd,
             epoll::ControlOptions::EPOLL_CTL_DEL,
             fd.as_raw_fd(),
             epoll::Event::new(epoll::Events::empty(), 0),
         );
-        Ok(())
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -230,6 +227,7 @@ impl AddTimer for EventLoop {
     }
 }
 
+#[must_use]
 #[derive(Debug, Clone, Copy)]
 enum FdState {
     None,
@@ -237,7 +235,7 @@ enum FdState {
 }
 
 impl FdState {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self::None
     }
 
@@ -256,7 +254,7 @@ impl FdState {
                 if fd.as_raw_fd() != prevfd.as_raw_fd() {
                     *self = Self::Some(fd, wants);
                     Diff::Replace {
-                        prevfd: prevfd,
+                        prevfd,
                         newfd: fd,
                         wants,
                     }
@@ -271,6 +269,8 @@ impl FdState {
     }
 }
 
+#[must_use]
+#[derive(Debug)]
 enum Diff {
     Add {
         fd: BorrowedFd<'static>,

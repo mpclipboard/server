@@ -1,5 +1,6 @@
-use std::num::NonZeroUsize;
+use core::num::NonZeroUsize;
 
+#[must_use]
 #[derive(Clone, Copy)]
 pub struct NonEmptyInlineString<const LEN: usize> {
     len: NonZeroUsize,
@@ -7,26 +8,27 @@ pub struct NonEmptyInlineString<const LEN: usize> {
 }
 
 impl<const LEN: usize> NonEmptyInlineString<LEN> {
+    #[must_use]
     pub fn truncate(s: &str) -> Option<Self> {
-        let mut bytes_written = 0;
+        let mut bytes_written: usize = 0;
         let mut bytes = [0; LEN];
 
         for c in s.chars() {
             let len = c.len_utf8();
             assert!(len <= 4);
-            if bytes_written + len > LEN {
+            if bytes_written.checked_add(len)? > LEN {
                 break;
             }
 
             let mut buf = [0; 4];
             c.encode_utf8(&mut buf);
-            let utf8_buf = &buf[..len];
+            let utf8_buf = buf.get(..len)?;
 
             let start = bytes_written;
-            let end = start + utf8_buf.len();
+            let end = start.checked_add(utf8_buf.len())?;
             bytes[start..end].copy_from_slice(utf8_buf);
 
-            bytes_written += utf8_buf.len();
+            bytes_written = bytes_written.checked_add(utf8_buf.len())?;
         }
 
         let len = NonZeroUsize::new(bytes_written)?;
@@ -34,24 +36,26 @@ impl<const LEN: usize> NonEmptyInlineString<LEN> {
         Some(Self { len, bytes })
     }
 
+    #[must_use]
     pub fn new(s: &str) -> Option<Self> {
-        let mut bytes = [0; LEN];
         let len = NonZeroUsize::new(s.len())?;
-
+        let mut bytes = [0; LEN];
         bytes.get_mut(0..len.get())?.copy_from_slice(s.as_bytes());
-
-        Some(Self { bytes, len })
+        Some(Self { len, bytes })
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes[..self.len.get()]
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         core::str::from_utf8(self.as_bytes()).unwrap_or_else(|_| unreachable!())
     }
 
-    pub fn len(&self) -> NonZeroUsize {
+    #[must_use]
+    pub const fn len(&self) -> NonZeroUsize {
         self.len
     }
 }

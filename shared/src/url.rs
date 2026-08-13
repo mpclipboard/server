@@ -1,5 +1,6 @@
 use crate::{Host, NonEmptyInlineString};
-use std::net::{SocketAddr, SocketAddrV4, ToSocketAddrs};
+use core::net::{SocketAddr, SocketAddrV4};
+use std::net::ToSocketAddrs;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Url {
@@ -15,7 +16,7 @@ impl Url {
             .split_once("://")
             .ok_or_else(|| std::io::Error::other("no :// separator in the URL"))?;
         let (host, port) = url
-            .rsplit_once(":")
+            .rsplit_once(':')
             .ok_or_else(|| std::io::Error::other("no : separator between host and port"))?;
 
         let tls = match scheme {
@@ -41,28 +42,29 @@ impl Url {
     }
 
     pub fn resolve(&self) -> std::io::Result<SocketAddrV4> {
-        let addrs = (self.host.as_str(), self.port)
+        let mut addrs = (self.host.as_str(), self.port)
             .to_socket_addrs()
             .map_err(|err| std::io::Error::other(format!("failed to resolve URL: {err:?}")))?;
 
         addrs
-            .filter_map(|addr| match addr {
+            .find_map(|addr| match addr {
                 SocketAddr::V4(v4) => Some(v4),
                 SocketAddr::V6(_) => None,
             })
-            .next()
             .ok_or_else(|| std::io::Error::other("can't resolve URL to IPv4 address"))
     }
 
-    pub fn is_tls(&self) -> bool {
+    #[must_use]
+    pub const fn is_tls(&self) -> bool {
         self.tls
     }
 
+    #[must_use]
     pub fn host(&self) -> &str {
         self.host.as_str()
     }
 
-    pub fn header(&self) -> Host {
+    pub const fn header(&self) -> Host {
         self.header
     }
 }

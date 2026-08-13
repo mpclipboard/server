@@ -1,3 +1,4 @@
+#[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Wants {
     Read,
@@ -18,11 +19,11 @@ impl Wants {
         }
     }
 
-    fn wants_read(self) -> bool {
+    const fn wants_read(self) -> bool {
         matches!(self, Self::Read | Self::ReadWrite)
     }
 
-    fn wants_write(self) -> bool {
+    const fn wants_write(self) -> bool {
         matches!(self, Self::Write | Self::ReadWrite)
     }
 }

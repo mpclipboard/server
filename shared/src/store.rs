@@ -1,5 +1,6 @@
 use crate::message::Message;
 
+#[must_use]
 pub struct Store {
     text: Option<Message>,
 }
@@ -9,7 +10,8 @@ impl Store {
         Self { text: None }
     }
 
-    pub fn current(&self) -> Option<Message> {
+    #[must_use]
+    pub const fn current(&self) -> Option<Message> {
         self.text
     }
 

@@ -1,5 +1,6 @@
+use core::num::NonZeroUsize;
 use rustix::io::Errno;
-use std::{io::ErrorKind, num::NonZeroUsize, os::fd::AsFd};
+use std::{io::ErrorKind, os::fd::AsFd};
 
 pub trait ByteStream {
     fn read_bytes(

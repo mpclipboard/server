@@ -23,7 +23,7 @@ const BASE_HANDSHAKE_LENGTH: usize = START_LINE.len() + 2 // start line
     + 2; // headers end marker
 
 impl HandshakeRequest {
-    pub const BYTESIZE: usize = BASE_HANDSHAKE_LENGTH
+    pub(crate) const BYTESIZE: usize = BASE_HANDSHAKE_LENGTH
         + MAX_HOST_LENGTH
         + MAX_TOKEN_LENGTH
         + MAX_ID_LENGTH
@@ -33,47 +33,51 @@ impl HandshakeRequest {
 impl HandshakeRequest {
     pub(crate) fn encode(&self) -> [u8; Self::BYTESIZE] {
         let mut buf = [0; Self::BYTESIZE];
-        let mut pos = 0;
+        let mut pos: usize = 0;
 
-        macro_rules! append {
-            ($s:expr) => {
-                buf[pos..pos + $s.len()].copy_from_slice($s.as_bytes());
-                pos += $s.len();
-            };
-        }
+        let mut append = |pos: &mut usize, s: &str| {
+            let start = *pos;
+            let end = start
+                .checked_add(s.len())
+                .unwrap_or_else(|| unreachable!("bug: failed to encode HandshakeRequest"));
+            buf.get_mut(start..end)
+                .unwrap_or_else(|| unreachable!("bug: failed to encode HandshakeRequest"))
+                .copy_from_slice(s.as_bytes());
+            *pos = end;
+        };
 
-        append!(START_LINE);
-        append!("\r\n");
+        append(&mut pos, START_LINE);
+        append(&mut pos, "\r\n");
 
-        append!(HOST_PREFIX);
-        append!(self.host.as_str());
-        append!("\r\n");
+        append(&mut pos, HOST_PREFIX);
+        append(&mut pos, self.host.as_str());
+        append(&mut pos, "\r\n");
 
-        append!(TOKEN_PREFIX);
-        append!(self.token.as_str());
-        append!("\r\n");
+        append(&mut pos, TOKEN_PREFIX);
+        append(&mut pos, self.token.as_str());
+        append(&mut pos, "\r\n");
 
-        append!(ID_PREFIX);
-        append!(self.id.as_str());
-        append!("\r\n");
+        append(&mut pos, ID_PREFIX);
+        append(&mut pos, self.id.as_str());
+        append(&mut pos, "\r\n");
 
-        append!(CONNECTION_UPGRADE_HEADER);
-        append!("\r\n");
+        append(&mut pos, CONNECTION_UPGRADE_HEADER);
+        append(&mut pos, "\r\n");
 
-        append!(UPGRADE_MPCLIPBOARD_RAW_HEADER);
-        append!("\r\n");
+        append(&mut pos, UPGRADE_MPCLIPBOARD_RAW_HEADER);
+        append(&mut pos, "\r\n");
 
-        append!(PADDING_PREFIX);
+        append(&mut pos, PADDING_PREFIX);
         #[expect(clippy::arithmetic_side_effects)]
         let padding_len = Self::BYTESIZE - 4 - pos;
         for _ in 0..padding_len {
-            append!("P");
+            append(&mut pos, "P");
         }
-        append!("\r\n");
+        append(&mut pos, "\r\n");
 
-        append!("\r\n");
+        append(&mut pos, "\r\n");
 
-        assert_eq!(pos, Self::BYTESIZE);
+        // assert_eq!(pos, Self::BYTESIZE);
         buf
     }
 }

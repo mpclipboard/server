@@ -1,11 +1,10 @@
 use crate::NonEmptyInlineString;
-use std::{
-    num::NonZeroUsize,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use core::num::NonZeroUsize;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_TEXT_LEN: usize = 200;
 
+#[must_use]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Message {
     pub(crate) string: NonEmptyInlineString<MAX_TEXT_LEN>,
@@ -13,29 +12,33 @@ pub struct Message {
 }
 
 impl Message {
-    pub const BYTESIZE: usize = size_of::<u8>() + size_of::<u128>() + MAX_TEXT_LEN;
+    pub(crate) const BYTESIZE: usize = size_of::<u8>() + size_of::<u128>() + MAX_TEXT_LEN;
 
     pub fn new(string: NonEmptyInlineString<MAX_TEXT_LEN>) -> Self {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap_or_else(|_| unreachable!("Time went backwards"))
+            .unwrap_or_else(|_| unreachable!("bug: time goes backwards"))
             .as_nanos();
 
         Self { string, timestamp }
     }
 
+    #[must_use]
     pub fn text_as_bytes(&self) -> &[u8] {
         self.string.as_bytes()
     }
 
+    #[must_use]
     pub fn text_as_str(&self) -> &str {
         self.string.as_str()
     }
 
-    pub fn timestamp(&self) -> u128 {
+    #[must_use]
+    pub const fn timestamp(&self) -> u128 {
         self.timestamp
     }
 
+    #[must_use]
     pub(crate) fn encode(&self) -> [u8; Self::BYTESIZE] {
         let mut buf = [0; Self::BYTESIZE];
         let text = self.text_as_bytes();
@@ -74,7 +77,7 @@ impl Message {
 }
 
 impl core::fmt::Debug for Message {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Text({:?} at {})", self.text_as_str(), self.timestamp)
     }
 }

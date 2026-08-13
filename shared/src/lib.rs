@@ -11,6 +11,8 @@
 #![warn(clippy::nursery)]
 #![warn(clippy::std_instead_of_alloc)]
 #![warn(clippy::std_instead_of_core)]
+#![expect(clippy::missing_errors_doc)]
+#![expect(clippy::missing_panics_doc)]
 #![doc = include_str!("../README.md")]
 
 mod config;
@@ -37,7 +39,12 @@ mod handshake_request_writer;
 pub use handshake_request_writer::HandshakeRequestWriter;
 
 mod handshake_response;
-pub use handshake_response::{HandshakeResponseReader, HandshakeResponseWriter};
+
+mod handshake_response_reader;
+pub use handshake_response_reader::HandshakeResponseReader;
+
+mod handshake_response_writer;
+pub use handshake_response_writer::HandshakeResponseWriter;
 
 mod message;
 pub use message::Message;
@@ -62,13 +69,13 @@ pub type Token = NonEmptyInlineString<MAX_TOKEN_LENGTH>;
 pub(crate) const MAX_ID_LENGTH: usize = 100;
 pub type ID = NonEmptyInlineString<MAX_ID_LENGTH>;
 
-pub(crate) const START_LINE: &'static str = "GET / HTTP/1.1";
-pub(crate) const HOST_PREFIX: &'static str = "Host: ";
-pub(crate) const TOKEN_PREFIX: &'static str = "Token: ";
-pub(crate) const ID_PREFIX: &'static str = "ID: ";
-pub(crate) const CONNECTION_UPGRADE_HEADER: &'static str = "Connection: Upgrade";
-pub(crate) const UPGRADE_MPCLIPBOARD_RAW_HEADER: &'static str = "Upgrade: mpclipboard-raw";
-pub(crate) const PADDING_PREFIX: &'static str = "Padding: ";
+pub(crate) const START_LINE: &str = "GET / HTTP/1.1";
+pub(crate) const HOST_PREFIX: &str = "Host: ";
+pub(crate) const TOKEN_PREFIX: &str = "Token: ";
+pub(crate) const ID_PREFIX: &str = "ID: ";
+pub(crate) const CONNECTION_UPGRADE_HEADER: &str = "Connection: Upgrade";
+pub(crate) const UPGRADE_MPCLIPBOARD_RAW_HEADER: &str = "Upgrade: mpclipboard-raw";
+pub(crate) const PADDING_PREFIX: &str = "Padding: ";
 pub(crate) const MIN_PADDING_LENGTH: usize = 1;
 
 mod non_empty_inline_string;

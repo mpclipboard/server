@@ -15,7 +15,7 @@ impl<P, const N: usize> HttpLinesReader<P, N>
 where
     P: HttpLinesParser,
 {
-    pub fn new(parser: P) -> Self {
+    pub(crate) const fn new(parser: P) -> Self {
         Self {
             buf: HttpLinesBuffer::new(),
             seen_end: false,
@@ -23,7 +23,8 @@ where
         }
     }
 
-    pub fn read_from(
+    #[expect(clippy::type_complexity)]
+    pub(crate) fn read_from(
         &mut self,
         stream: &mut impl ByteStream,
         fd: &impl AsFd,
@@ -31,7 +32,7 @@ where
         loop {
             match stream.read_bytes(fd, self.buf.remainder())? {
                 Some(len) => {
-                    self.buf.received(len);
+                    self.buf.received(len)?;
 
                     while let Some(line) = self.buf.next_line()
                         && !self.seen_end
@@ -50,7 +51,7 @@ where
                         } else {
                             self.parser.line_received(line)?;
                         }
-                        self.buf.consumed(line.len());
+                        self.buf.consumed(line.len())?;
 
                         if self.seen_end
                             && let Some(output) = self.parser.try_finish()

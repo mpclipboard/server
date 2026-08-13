@@ -13,14 +13,14 @@ impl ConfigParser {
         let toml =
             boml::parse(&contents).map_err(|err| std::io::Error::other(format!("{err:?}")))?;
 
-        let mut values = core::array::from_fn(|_| String::new());
+        let mut values: [String; N] = core::array::from_fn(|_| String::new());
 
-        for (idx, key) in keys.iter().enumerate() {
+        for (key, slot) in keys.iter().zip(values.iter_mut()) {
             let value = toml
                 .get_string(key)
                 .map_err(|err| std::io::Error::other(format!("failed to get {key}: {err:?}")))?;
 
-            values[idx] = value.to_string();
+            *slot = value.to_string();
         }
 
         Ok(values)

@@ -39,12 +39,17 @@ impl Timerfd {
         Ok(Self { fd, time: 0 })
     }
 
-    #[must_use]
     pub fn read(&mut self) -> std::io::Result<u64> {
         let mut buf = [0u8; 8];
         let len = rustix::io::read(&self.fd, &mut buf)?;
         assert_eq!(len, 8);
-        self.time += u64::from_le_bytes(buf);
+
+        let d = u64::from_le_bytes(buf);
+        self.time = self
+            .time
+            .checked_add(d)
+            .ok_or_else(|| std::io::Error::other("timer overflow"))?;
+
         Ok(self.time)
     }
 }

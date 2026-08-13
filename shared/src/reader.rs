@@ -1,23 +1,23 @@
 use crate::{byte_stream::ByteStream, readbuf::Readbuf, trace};
 use std::os::fd::AsFd;
 
+#[must_use]
 #[derive(Debug, Clone, Copy)]
 pub struct Reader<const N: usize> {
     readbuf: Readbuf<N>,
 }
 
 impl<const N: usize> Reader<N> {
-    pub fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             readbuf: Readbuf::new(),
         }
     }
 
-    pub fn new_with_data(data: &[u8]) -> (Self, Option<[u8; N]>) {
+    pub(crate) fn new_with_data(data: &[u8]) -> (Self, Option<[u8; N]>) {
         assert!(data.len() <= N);
 
-        if data.len() == N {
-            let buf = data.try_into().unwrap_or_else(|_| unreachable!());
+        if let Ok(buf) = data.try_into() {
             return (Self::new(), Some(buf));
         }
 
@@ -29,7 +29,7 @@ impl<const N: usize> Reader<N> {
         )
     }
 
-    pub fn read_from(
+    pub(crate) fn read_from(
         &mut self,
         stream: &mut impl ByteStream,
         fd: &impl AsFd,

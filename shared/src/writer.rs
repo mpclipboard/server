@@ -1,20 +1,19 @@
 use crate::{byte_stream::ByteStream, writebuf::Writebuf};
 use std::os::fd::AsFd;
 
-#[expect(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Copy)]
 pub struct Writer<const N: usize> {
     writebuf: Writebuf<N>,
 }
 
 impl<const N: usize> Writer<N> {
-    pub fn new(buf: [u8; N]) -> Self {
+    pub(crate) const fn new(buf: [u8; N]) -> Self {
         Self {
             writebuf: Writebuf::new(buf),
         }
     }
 
-    pub fn write_to(
+    pub(crate) fn write_to(
         &mut self,
         stream: &mut impl ByteStream,
         fd: &impl AsFd,

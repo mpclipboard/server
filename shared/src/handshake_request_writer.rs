@@ -1,6 +1,7 @@
 use crate::{HandshakeRequest, byte_stream::ByteStream, writer::Writer};
 use std::os::fd::AsFd;
 
+#[must_use]
 #[derive(Debug, Clone, Copy)]
 pub struct HandshakeRequestWriter {
     inner: Writer<{ HandshakeRequest::BYTESIZE }>,

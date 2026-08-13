@@ -1,13 +1,14 @@
 use crate::{ByteStream, Message, reader::Reader};
 use std::os::fd::AsFd;
 
+#[must_use]
 #[derive(Debug, Clone, Copy)]
 pub struct MessageReader {
     inner: Reader<{ Message::BYTESIZE }>,
 }
 
 impl MessageReader {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             inner: Reader::new(),
         }
@@ -30,5 +31,11 @@ impl MessageReader {
         };
         let message = Message::decode(&buf)?;
         Ok(Some(message))
+    }
+}
+
+impl Default for MessageReader {
+    fn default() -> Self {
+        Self::new()
     }
 }

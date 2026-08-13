@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, num::NonZeroUsize};
+use core::{cmp::Ordering, num::NonZeroUsize};
 
 #[derive(Clone, Copy)]
 pub struct Writebuf<const N: usize> {
@@ -7,7 +7,7 @@ pub struct Writebuf<const N: usize> {
 }
 
 impl<const N: usize> Writebuf<N> {
-    pub(crate) fn new(buf: [u8; N]) -> Self {
+    pub(crate) const fn new(buf: [u8; N]) -> Self {
         Self { buf, pos: 0 }
     }
 

@@ -1,6 +1,8 @@
 use crate::{byte_stream::ByteStream, message::Message, writebuf::Writebuf};
-use std::{num::NonZeroUsize, os::fd::AsFd};
+use core::num::NonZeroUsize;
+use std::os::fd::AsFd;
 
+#[must_use]
 #[expect(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Copy)]
 pub enum MessageWriter {
@@ -13,7 +15,7 @@ pub enum MessageWriter {
 }
 
 impl MessageWriter {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self::Empty
     }
 
@@ -70,7 +72,14 @@ impl MessageWriter {
         Ok(())
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.buf_to_write().is_none()
+    }
+}
+
+impl Default for MessageWriter {
+    fn default() -> Self {
+        Self::new()
     }
 }
