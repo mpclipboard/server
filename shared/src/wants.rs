@@ -19,11 +19,11 @@ impl Wants {
         }
     }
 
-    const fn wants_read(self) -> bool {
+    pub(crate) const fn wants_read(self) -> bool {
         matches!(self, Self::Read | Self::ReadWrite)
     }
 
-    const fn wants_write(self) -> bool {
+    pub(crate) const fn wants_write(self) -> bool {
         matches!(self, Self::Write | Self::ReadWrite)
     }
 }
