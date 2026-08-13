@@ -8,16 +8,16 @@ ASSETS_DIR = Path("Assets.xcassets")
 INFO = {"author": "xcode", "version": 1}
 IMAGESETS = ("green", "red", "yellow")
 APPICON_SLOTS = (
-    ("16x16", "1x", None),
-    ("16x16", "2x", None),
+    ("16x16", "1x", "icon-16x16.png"),
+    ("16x16", "2x", "icon-16x16@2x.png"),
     ("32x32", "1x", "icon-32x32.png"),
-    ("32x32", "2x", None),
-    ("128x128", "1x", None),
-    ("128x128", "2x", None),
-    ("256x256", "1x", None),
-    ("256x256", "2x", None),
-    ("512x512", "1x", None),
-    ("512x512", "2x", None),
+    ("32x32", "2x", "icon-32x32@2x.png"),
+    ("128x128", "1x", "icon-128x128.png"),
+    ("128x128", "2x", "icon-128x128@2x.png"),
+    ("256x256", "1x", "icon-256x256.png"),
+    ("256x256", "2x", "icon-256x256@2x.png"),
+    ("512x512", "1x", "icon-512x512.png"),
+    ("512x512", "2x", "icon-512x512@2x.png"),
 )
 
 

@@ -75,15 +75,29 @@ _generate-imageset name rgb:
     @just _generate-imageset-variant "{{rgb}}" 144 48x48 {{assetsdir}}/{{name}}.imageset/{{name}}@2x.png
     @just _generate-imageset-variant "{{rgb}}" 216 72x72 {{assetsdir}}/{{name}}.imageset/{{name}}@3x.png
 
-_generate-iconset rgb:
+_generate-icon-variant rgb size outpath:
     magick {{baseicon}} \
-        -resize 32x32 \
+        -resize {{size}} \
         -alpha set \
         -channel rgba \
         -fill "{{rgb}}" \
         -colorize 100% \
         -strip \
-        {{assetsdir}}/AppIcon.appiconset/icon-32x32.png
+        {{outpath}}
+
+_generate-iconset rgb:
+    mkdir -p {{assetsdir}}/AppIcon.appiconset
+
+    @just _generate-icon-variant "{{rgb}}" 16x16     {{assetsdir}}/AppIcon.appiconset/icon-16x16.png
+    @just _generate-icon-variant "{{rgb}}" 32x32     {{assetsdir}}/AppIcon.appiconset/icon-16x16@2x.png
+    @just _generate-icon-variant "{{rgb}}" 32x32     {{assetsdir}}/AppIcon.appiconset/icon-32x32.png
+    @just _generate-icon-variant "{{rgb}}" 64x64     {{assetsdir}}/AppIcon.appiconset/icon-32x32@2x.png
+    @just _generate-icon-variant "{{rgb}}" 128x128   {{assetsdir}}/AppIcon.appiconset/icon-128x128.png
+    @just _generate-icon-variant "{{rgb}}" 256x256   {{assetsdir}}/AppIcon.appiconset/icon-128x128@2x.png
+    @just _generate-icon-variant "{{rgb}}" 256x256   {{assetsdir}}/AppIcon.appiconset/icon-256x256.png
+    @just _generate-icon-variant "{{rgb}}" 512x512   {{assetsdir}}/AppIcon.appiconset/icon-256x256@2x.png
+    @just _generate-icon-variant "{{rgb}}" 512x512   {{assetsdir}}/AppIcon.appiconset/icon-512x512.png
+    @just _generate-icon-variant "{{rgb}}" 1024x1024 {{assetsdir}}/AppIcon.appiconset/icon-512x512@2x.png
 
 # Generates all image/icon resources
 generate-all-resources:
