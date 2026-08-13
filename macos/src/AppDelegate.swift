@@ -35,12 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mpclipboardSource = source
 
         clipboardTimer = clipboard.startPolling(onCopy: { text in
-            switch self.mpclipboard.pushText(text) {
-            case .droppedAsStale:
-                return
-            case .error:
-                fatalError("MPClipboard return error from .push_text()")
-            case .sent:
+            if self.mpclipboard.pushText(text) {
                 self.tray.pushSent(text)
             }
         })
@@ -59,15 +54,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         DispatchQueue.main.async {
-            switch output {
-            case .connectivityChanged(let connectivity):
+            if let connectivity = output.connectivity {
                 self.tray.setConnectivity(connectivity)
-            case .newText(let text):
+            }
+
+            if let text = output.text {
                 self.clipboard.writeText(text)
                 self.tray.pushReceived(text)
                 self.showNotification(text)
-            case .error:
-                fatalError("MPClipboard return error from .read()")
             }
         }
     }

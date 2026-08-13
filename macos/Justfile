@@ -26,6 +26,8 @@ dev:
 # Builds a release and places it at given "out" argument
 [macos]
 release out:
+    @just clean
+    @just generate
     cd ../generic-client && cargo build --release
     @just build Release
 

@@ -19,51 +19,40 @@ enum Connectivity {
     }
 }
 
-enum PushResult {
-    case sent
-    case droppedAsStale
-    case error
-
-    static func from(_ pushResult: mpclipboard_PushResult) -> Self {
-        switch pushResult {
-        case MPCLIPBOARD_PUSH_RESULT_SENT:
-            .sent
-        case MPCLIPBOARD_PUSH_RESULT_DROPPED_AS_STALE:
-            .droppedAsStale
-        case MPCLIPBOARD_PUSH_RESULT_ERROR:
-            .error
-        default:
-            fatalError("unsupported PushResult")
-        }
-    }
-}
-
-enum Output {
-    case connectivityChanged(Connectivity)
-    case newText(String)
-    case error
+struct Output {
+    let connectivity: Connectivity?
+    let text: String?
 
     static func from(_ output: mpclipboard_Output) -> Self? {
         switch output.tag {
         case MPCLIPBOARD_OUTPUT_CONNECTIVITY_CHANGED:
-            return .connectivityChanged(Connectivity.from(output.CONNECTIVITY_CHANGED.connectivity))
+            return Output(connectivity: Connectivity.from(output.CONNECTIVITY_CHANGED.connectivity), text: nil)
         case MPCLIPBOARD_OUTPUT_NEW_TEXT:
-            let (ptr, len) = (output.NEW_TEXT.ptr!, output.NEW_TEXT.len)
-            let data = Data(bytes: ptr, count: len)
-            free(ptr)
-
-            if let text = String(data: data, encoding: .utf8) {
-                return .newText(text)
-            } else {
-                fatalError("non-utf8 new text in output")
-            }
+            return Output(connectivity: nil, text: string(ptr: output.NEW_TEXT.ptr, len: output.NEW_TEXT.len))
+        case MPCLIPBOARD_OUTPUT_BOTH:
+            return Output(
+                connectivity: Connectivity.from(output.BOTH.connectivity),
+                text: string(ptr: output.BOTH.ptr, len: output.BOTH.len)
+            )
         case MPCLIPBOARD_OUTPUT_IGNORE:
             return nil
         case MPCLIPBOARD_OUTPUT_ERROR:
-            return .error
+            fatalError("MPClipboard return error from .read()")
         default:
             fatalError("unsupported Output")
         }
+    }
+
+    private static func string(ptr: UnsafeMutablePointer<CChar>?, len: Int) -> String {
+        let ptr = ptr!
+        let data = Data(bytes: ptr, count: len)
+        free(ptr)
+
+        guard let text = String(data: data, encoding: .utf8) else {
+            fatalError("non-utf8 new text in output")
+        }
+
+        return text
     }
 }
 
@@ -71,34 +60,32 @@ final class MPClipboard {
     private let handle: OpaquePointer
 
     init() {
-        mpclipboard_init()
-
 #if DEBUG
         puts("Debug build, using local config")
-        var option = MPCLIPBOARD_CONFIG_READ_OPTION_FROM_LOCAL_FILE
-#else
-        puts("Release build, using config from XDG dir")
-        var option = MPCLIPBOARD_CONFIG_READ_OPTION_FROM_XDG_CONFIG_DIR
-#endif
-
-        guard let config = mpclipboard_config_read(option) else {
-            fatalError("NULL config")
-        }
-
-        guard let handle = mpclipboard_new(config) else {
+        guard let handle = mpclipboard_new_with_local_config() else {
             fatalError("NULL mpclipboard")
         }
+#else
+        puts("Release build, using config from XDG dir")
+        guard let handle = mpclipboard_new_with_xdg_config() else {
+            fatalError("NULL mpclipboard")
+        }
+#endif
 
         self.handle = handle
+    }
+
+    deinit {
+        mpclipboard_drop(handle)
     }
 
     func fd() -> Int32 {
         mpclipboard_get_fd(handle)
     }
 
-    func pushText(_ text: String) -> PushResult {
+    func pushText(_ text: String) -> Bool {
         text.utf8CString.withUnsafeBufferPointer { bytes in
-            PushResult.from(mpclipboard_push_text(handle, bytes.baseAddress, bytes.count - 1))
+            mpclipboard_push_text(handle, bytes.baseAddress, bytes.count - 1)
         }
     }
 
