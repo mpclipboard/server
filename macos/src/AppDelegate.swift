@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        let source = DispatchSource.makeReadSource(fileDescriptor: mpclipboard.fd(), queue: .global())
+        let source = DispatchSource.makeReadSource(fileDescriptor: mpclipboard.fd(), queue: .main)
         source.setEventHandler { [weak self] in
             self?.readMPClipboard()
         }
