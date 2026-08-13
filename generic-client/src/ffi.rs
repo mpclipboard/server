@@ -24,7 +24,6 @@ fn string_to_c(s: String) -> (*mut c_char, usize) {
     (ptr.cast(), len)
 }
 
-/// Initializes `MPClipboard`, must be called once at startup
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_init() -> bool {
     if let Err(err) = MPClipboard::init() {
@@ -35,7 +34,6 @@ pub extern "C" fn mpclipboard_init() -> bool {
     }
 }
 
-/// Constructs a new `MPClipboard` using given options.
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_new_inline(
     url: *const c_char,
@@ -50,54 +48,39 @@ pub extern "C" fn mpclipboard_new_inline(
     Box::leak(Box::new(mpclipboard))
 }
 
-/// Constructs a new `MPClipboard` based on the local `config.toml` in the working directory.
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_new_with_local_config() -> *mut MPClipboard {
     let mpclipboard = try_or_null!(MPClipboard::new_with_local_config());
     Box::leak(Box::new(mpclipboard))
 }
 
-/// Constructs a new `MPClipboard` based on the `$XDG_CONFIG_HOME/mpclipboard/config.toml`.
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_new_with_xdg_config() -> *mut MPClipboard {
     let mpclipboard = try_or_null!(MPClipboard::new_with_xdg_config());
     Box::leak(Box::new(mpclipboard))
 }
 
-/// Returns the file descriptor for a given `MPClipboard` instance.
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_get_fd(mpclipboard: *mut MPClipboard) -> i32 {
     let mpclipboard = unsafe { &*mpclipboard };
     mpclipboard.as_raw_fd()
 }
 
-/// Result of reading
 #[repr(C)]
 pub enum COutput {
-    /// An event indicating that connectivity changed, guaranteed to be different from a previous one
     ConnectivityChanged {
-        /// New connecivity
         connectivity: Connectivity,
     },
-    /// New text clip
     NewText {
-        /// New text
         ptr: *mut c_char,
-        /// and its length
         len: usize,
     },
-    /// Connectivity changed and a new text clip was received
     Both {
-        /// New connecivity
         connectivity: Connectivity,
-        /// New text
         ptr: *mut c_char,
-        /// and its length
         len: usize,
     },
-    /// Ignore
     Ignore,
-    /// Error
     Error,
 }
 impl From<Output> for COutput {
@@ -122,7 +105,6 @@ impl From<Output> for COutput {
     }
 }
 
-/// Reads from a given `MPClipboard` instance.
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_read(mpclipboard: *mut MPClipboard) -> COutput {
     let mpclipboard = unsafe { &mut *mpclipboard };
@@ -136,53 +118,30 @@ pub extern "C" fn mpclipboard_read(mpclipboard: *mut MPClipboard) -> COutput {
     }
 }
 
-#[repr(C)]
-/// Result of pushing text to `MPClipboard`.
-pub enum PushResult {
-    /// The text is new, it has been sent.
-    Sent,
-    /// The text is stale, it's been dropped.
-    DroppedAsStale,
-    /// Internal error, `MPClipboard` is now in malformed state
-    Error,
-}
-
-/// Pushes text from pointer + length
-/// returns false if given text isn't new
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_push_text(
     mpclipboard: *mut MPClipboard,
     ptr: *const c_char,
     len: usize,
-) -> PushResult {
+) -> bool {
     let mpclipboard = unsafe { &mut *mpclipboard };
     let bytes = unsafe { core::slice::from_raw_parts(ptr.cast::<u8>(), len) };
     let text = unsafe { std::str::from_utf8_unchecked(bytes) };
 
-    match mpclipboard.push_text(text) {
-        Ok(true) => PushResult::Sent,
-        Ok(false) => PushResult::DroppedAsStale,
-        Err(err) => {
-            error!("{err:?}");
-            PushResult::Error
-        }
-    }
+    mpclipboard.push_text(text)
 }
 
-/// Drops an instance of `MPClipboard`, frees memory, closes files
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_drop(mpclipboard: *mut MPClipboard) {
     unsafe { core::ptr::drop_in_place(mpclipboard) };
 }
 
-/// Prints one "info" and one "error" message, useful for testing
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_logger_test() {
     info!("info example");
     error!("error example");
 }
 
-/// Configures rustls on JVM
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_setup_rustls_on_jvm(

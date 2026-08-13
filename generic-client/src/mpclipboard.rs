@@ -8,7 +8,6 @@ use std::{
     time::Duration,
 };
 
-/// The main entrypoint
 pub struct MPClipboard {
     event_loop: EventLoop,
     now: u64,
@@ -17,12 +16,6 @@ pub struct MPClipboard {
 }
 
 impl MPClipboard {
-    /// Initializes `MPClipboard`, must be called once at the start of the program.
-    /// Internally initializes logger and TLS.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if TLS initialization fails.
     pub fn init() -> Result<()> {
         Logger::init();
         TLS::init()?;
@@ -36,7 +29,7 @@ impl MPClipboard {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_else(|_| unreachable!("time goes backwards"))
             .as_secs();
-        let conn = Connection::new(config)?;
+        let conn = Connection::new(config);
 
         event_loop
             .sync(conn.wants())
@@ -71,11 +64,6 @@ impl MPClipboard {
         Self::new(config)
     }
 
-    /// Reads data from the connection, returns Output
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if OS-specific event loop (epoll/kqueue) returns an error
     pub fn read(&mut self) -> Result<Option<Output>> {
         let polled = self
             .event_loop
@@ -83,7 +71,7 @@ impl MPClipboard {
             .context("failed to wait() on event loop")?;
 
         let prev_connectivity = self.conn.connectivity();
-        let message = if let Some(message) = self.drain(polled)
+        let message = if let Some(message) = self.drain(&polled)
             && self.store.add(message)
         {
             Some(message.text_as_str().to_string())
@@ -110,7 +98,7 @@ impl MPClipboard {
         })
     }
 
-    fn drain(&mut self, polled: EventLoopResult) -> Option<Message> {
+    fn drain(&mut self, polled: &EventLoopResult) -> Option<Message> {
         let mut out = None;
 
         if let Some(time) = polled.time {
@@ -137,23 +125,17 @@ impl MPClipboard {
         out
     }
 
-    /// Pushes a new text Clip with provided content.
-    /// There's NO queue internally, so this this method overrides previously pushed-but-not-sent Clip.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if OS-specific event loop (epoll/kqueue) returns an error
-    pub fn push_text(&mut self, text: &str) -> Result<bool> {
+    pub fn push_text(&mut self, text: &str) -> bool {
         let Some(text) = NonEmptyInlineString::truncate(text) else {
-            error!("Skipping empty text");
-            return Ok(false);
+            info!("Skipping empty text");
+            return false;
         };
         let message = Message::new(text);
 
         if self.store.add(message) {
-            Ok(self.conn.push(message))
+            self.conn.push(message)
         } else {
-            Ok(false)
+            false
         }
     }
 }

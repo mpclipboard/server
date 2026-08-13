@@ -58,7 +58,7 @@ fn main() -> Result<()> {
             stdin.read_line(&mut line)?;
             let line = line.trim();
             if !line.is_empty() {
-                mpclipboard.push_text(line)?;
+                mpclipboard.push_text(line);
             }
         }
     }

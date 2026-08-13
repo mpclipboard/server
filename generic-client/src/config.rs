@@ -1,18 +1,11 @@
-use anyhow::{Context as _, Result};
+use anyhow::{Context, Result};
 use mpclipboard_shared::{ConfigParser, ID, Token, Url};
 use std::path::{Path, PathBuf};
 
-/// Representation of a runtime configuration
 #[derive(Clone, Copy)]
-pub(crate) struct Config {
-    /// URL of the server
-    /// (e.g. `"http://127.0.0.1:3000"` or `"https://mpclipboard.me.dev:443"`)
+pub struct Config {
     pub(crate) url: Url,
-
     pub(crate) token: Token,
-
-    /// Unique ID of the client
-    /// (e.g. `"macos-old-laptop"` or `"linux-dusty-minipc"`)
     pub(crate) id: ID,
 }
 

@@ -1,5 +1,4 @@
 use crate::{Connectivity, config::Config};
-use anyhow::Result;
 use mpclipboard_shared::{Message, Wants, error, info};
 use std::os::fd::BorrowedFd;
 
@@ -27,7 +26,7 @@ mod connected;
 use connected::Connected;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum ConnectionState {
+pub enum ConnectionState {
     Disconnected(Disconnected),
     Connecting(Connecting),
     TlsHandshake(TlsHandshake),
@@ -37,7 +36,7 @@ pub(crate) enum ConnectionState {
 }
 
 impl ConnectionState {
-    fn name(&self) -> &'static str {
+    const fn name(&self) -> &'static str {
         match self {
             Self::Disconnected(_) => "Disconnected",
             Self::Connecting(_) => "Connecting",
@@ -81,12 +80,12 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub(crate) fn new(config: Config) -> Result<Self> {
-        Ok(Self {
+    pub(crate) const fn new(config: Config) -> Self {
+        Self {
             state: ConnectionState::Disconnected(Disconnected::new(0)),
             config,
             stream: MaybeTlsStream::empty(),
-        })
+        }
     }
 
     pub(crate) fn tick(&mut self, now: u64) {
@@ -144,7 +143,7 @@ impl Connection {
         }
     }
 
-    pub(crate) fn is_disconnected(&self) -> bool {
+    pub(crate) const fn is_disconnected(&self) -> bool {
         matches!(self.state, ConnectionState::Disconnected(_))
     }
 
@@ -201,12 +200,12 @@ impl Connection {
 
     pub(crate) fn wants(&self) -> Option<(BorrowedFd<'static>, Wants)> {
         match self.state {
-            ConnectionState::Disconnected(s) => s.wants(),
-            ConnectionState::Connecting(s) => s.wants(),
-            ConnectionState::TlsHandshake(s) => s.wants(&self.stream),
-            ConnectionState::WritingHandshakeRequest(s) => s.wants(&self.stream),
-            ConnectionState::ReadingHandshakeResponse(s) => s.wants(&self.stream),
-            ConnectionState::Connected(s) => s.wants(&self.stream),
+            ConnectionState::Disconnected(_) => None,
+            ConnectionState::Connecting(s) => Some(s.wants()),
+            ConnectionState::TlsHandshake(s) => Some(s.wants(&self.stream)),
+            ConnectionState::WritingHandshakeRequest(s) => Some(s.wants(&self.stream)),
+            ConnectionState::ReadingHandshakeResponse(s) => Some(s.wants(&self.stream)),
+            ConnectionState::Connected(s) => Some(s.wants(&self.stream)),
         }
     }
 
@@ -219,11 +218,11 @@ impl Connection {
         }
 
         if prev.name() != next.name() {
-            info!("Transitioning {} -> {}", prev.name(), next.name())
+            info!("Transitioning {} -> {}", prev.name(), next.name());
         }
     }
 
-    pub(crate) fn connectivity(&self) -> Connectivity {
+    pub(crate) const fn connectivity(&self) -> Connectivity {
         self.state.connectivity()
     }
 

@@ -8,7 +8,7 @@ use std::{
     os::fd::{BorrowedFd, IntoRawFd},
 };
 
-pub(crate) fn connect(addr: &SocketAddrV4) -> ConnectResult {
+pub fn connect(addr: SocketAddrV4) -> ConnectResult {
     let fd = match rustix::net::socket(AddressFamily::INET, SocketType::STREAM, None) {
         Ok(fd) => fd,
         Err(err) => {
@@ -30,7 +30,7 @@ pub(crate) fn connect(addr: &SocketAddrV4) -> ConnectResult {
         return ConnectResult::Failed;
     }
 
-    match rustix::net::connect(&fd, addr) {
+    match rustix::net::connect(&fd, &addr) {
         Ok(()) => {
             let fd = unsafe { BorrowedFd::borrow_raw(fd.into_raw_fd()) };
             ConnectResult::Connected(fd)
@@ -46,7 +46,7 @@ pub(crate) fn connect(addr: &SocketAddrV4) -> ConnectResult {
     }
 }
 
-pub(crate) enum ConnectResult {
+pub enum ConnectResult {
     Connected(BorrowedFd<'static>),
     StillPending(BorrowedFd<'static>),
     Failed,

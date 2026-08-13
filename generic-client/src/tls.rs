@@ -1,13 +1,13 @@
-use anyhow::{Context as _, Result};
+use anyhow::{Context, Result};
 use mpclipboard_shared::trace;
 use rustls::ClientConfig;
-use rustls_platform_verifier::ConfigVerifierExt as _;
+use rustls_platform_verifier::ConfigVerifierExt;
 use std::sync::{Arc, OnceLock};
 
 static CLIENT_CONFIG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
 
 #[expect(clippy::upper_case_acronyms)]
-pub(crate) struct TLS;
+pub struct TLS;
 
 impl TLS {
     pub(crate) fn init() -> Result<()> {

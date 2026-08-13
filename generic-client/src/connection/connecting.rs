@@ -10,27 +10,30 @@ use mpclipboard_shared::{Wants, error};
 use std::os::fd::{AsRawFd, BorrowedFd};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Connecting {
+pub struct Connecting {
     fd: BorrowedFd<'static>,
     last_activity_at: u64,
 }
 
 impl Connecting {
-    pub(crate) fn new(fd: BorrowedFd<'static>, now: u64) -> Self {
+    pub(crate) const fn new(fd: BorrowedFd<'static>, now: u64) -> Self {
         Self {
             fd,
             last_activity_at: now,
         }
     }
 
-    pub(crate) fn wants(&self) -> Option<(BorrowedFd<'static>, Wants)> {
-        Some((self.fd, Wants::Write))
+    pub(crate) const fn wants(&self) -> (BorrowedFd<'static>, Wants) {
+        (self.fd, Wants::Write)
     }
 
     pub(crate) fn disconnect_if_stuck(self, now: u64) -> ConnectionState {
-        if now - self.last_activity_at > FREEZE_TIME_IN_SECS {
+        let diff = now
+            .checked_sub(self.last_activity_at)
+            .unwrap_or_else(|| unreachable!("time goes backwards"));
+        if diff > FREEZE_TIME_IN_SECS {
             error!("Stuck in Connecting, disconnecting...");
-            self.disconnect(now).into()
+            self.disconnect(now)
         } else {
             self.into()
         }

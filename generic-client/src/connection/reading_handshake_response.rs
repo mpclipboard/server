@@ -8,7 +8,7 @@ use mpclipboard_shared::{
 use std::os::fd::{AsRawFd, BorrowedFd};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ReadingHandshakeResponse {
+pub struct ReadingHandshakeResponse {
     fd: BorrowedFd<'static>,
     reader: HandshakeResponseReader,
     last_activity_at: u64,
@@ -23,18 +23,21 @@ impl ReadingHandshakeResponse {
         }
     }
 
-    pub(crate) fn wants(&self, stream: &MaybeTlsStream) -> Option<(BorrowedFd<'static>, Wants)> {
-        Some((self.fd, stream.wants(Wants::Read)))
+    pub(crate) fn wants(&self, stream: &MaybeTlsStream) -> (BorrowedFd<'static>, Wants) {
+        (self.fd, stream.wants(Wants::Read))
     }
 
-    pub(crate) fn fd(&self) -> BorrowedFd<'static> {
+    pub(crate) const fn fd(&self) -> BorrowedFd<'static> {
         self.fd
     }
 
     pub(crate) fn disconnect_if_stuck(self, now: u64) -> ConnectionState {
-        if now - self.last_activity_at > FREEZE_TIME_IN_SECS {
+        let diff = now
+            .checked_sub(self.last_activity_at)
+            .unwrap_or_else(|| unreachable!("time goes backwards"));
+        if diff > FREEZE_TIME_IN_SECS {
             error!("Stuck in ReadingHandshakeResponse, disconnecting...");
-            self.disconnect(now).into()
+            self.disconnect(now)
         } else {
             self.into()
         }
@@ -58,9 +61,11 @@ impl ReadingHandshakeResponse {
                     error!("{err:?}");
                     (self.disconnect(now), None)
                 } else {
-                    let data = &buf[..len];
-                    warn!("Handshake leftover: {data:?}");
-                    let (connected, message) = Connected::new(self.fd, data);
+                    let leftover = buf
+                        .get(..len)
+                        .unwrap_or_else(|| unreachable!("leftover buffer is malformed"));
+                    warn!("Handshake leftover: {leftover:?}");
+                    let (connected, message) = Connected::new(self.fd, leftover);
                     match message {
                         Some(Ok(message)) => (connected.into(), Some(message)),
                         Some(Err(err)) => {

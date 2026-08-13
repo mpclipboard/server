@@ -5,7 +5,7 @@ use mpclipboard_shared::{Message, MessageReader, MessageWriter, Wants, error};
 use std::os::fd::{AsRawFd, BorrowedFd};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Connected {
+pub struct Connected {
     fd: BorrowedFd<'static>,
     reader: MessageReader,
     writer: MessageWriter,
@@ -28,15 +28,15 @@ impl Connected {
         )
     }
 
-    pub(crate) fn wants(&self, stream: &MaybeTlsStream) -> Option<(BorrowedFd<'static>, Wants)> {
-        Some((
+    pub(crate) fn wants(&self, stream: &MaybeTlsStream) -> (BorrowedFd<'static>, Wants) {
+        (
             self.fd,
             stream.wants(if self.writer.is_empty() {
                 Wants::Read
             } else {
                 Wants::ReadWrite
             }),
-        ))
+        )
     }
 
     pub(crate) fn push(&mut self, message: Message) {

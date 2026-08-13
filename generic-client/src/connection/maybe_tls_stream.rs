@@ -1,5 +1,5 @@
 use crate::tls::TLS;
-use anyhow::{Context as _, Result};
+use anyhow::{Context, Result};
 use mpclipboard_shared::{ByteStream, PlainByteStream, Url, Wants, error};
 use rustls::{ClientConnection, pki_types::ServerName};
 use std::{
@@ -9,21 +9,21 @@ use std::{
 };
 
 #[derive(Debug)]
-pub(crate) enum MaybeTlsStream {
+pub enum MaybeTlsStream {
     Empty,
     Plain,
     Tls(Box<ClientConnection>),
 }
 
 #[derive(Debug)]
-pub(crate) enum TlsHandshakeResult {
+pub enum TlsHandshakeResult {
     Done,
     Pending,
     Died,
 }
 
 impl MaybeTlsStream {
-    pub(crate) fn empty() -> Self {
+    pub(crate) const fn empty() -> Self {
         Self::Empty
     }
 
@@ -40,7 +40,7 @@ impl MaybeTlsStream {
         }
     }
 
-    pub(crate) fn is_tls(&self) -> bool {
+    pub(crate) const fn is_tls(&self) -> bool {
         matches!(self, Self::Tls(_))
     }
 
@@ -102,7 +102,7 @@ impl MaybeTlsStream {
             Self::Tls(conn) => match (conn.wants_read(), conn.wants_write()) {
                 (true, true) => Wants::ReadWrite,
                 (true, false) => Wants::Read,
-                (false, true) | (false, false) => Wants::Write,
+                (false, true | false) => Wants::Write,
             },
         }
     }
@@ -121,20 +121,14 @@ impl ByteStream for MaybeTlsStream {
                 match conn.complete_io(&mut StdReadWriteFd(fd)) {
                     Ok(_) => {}
                     Err(err) if err.kind() == ErrorKind::WouldBlock => {}
-                    Err(err) => {
-                        error!("TLS read failed: {err:?}");
-                        return Err(err);
-                    }
+                    Err(err) => return Err(err),
                 }
 
                 match conn.reader().read(buf).map(NonZeroUsize::new) {
                     Ok(Some(len)) => Ok(Some(len)),
                     Ok(None) => Err(std::io::Error::new(ErrorKind::UnexpectedEof, "EOF")),
                     Err(err) if err.kind() == ErrorKind::WouldBlock => Ok(None),
-                    Err(err) => {
-                        error!("TLS plaintext read failed: {err:?}");
-                        Err(err)
-                    }
+                    Err(err) => Err(err),
                 }
             }
         }
@@ -153,19 +147,13 @@ impl ByteStream for MaybeTlsStream {
                     Err(err) if err.kind() == ErrorKind::WouldBlock => {
                         return Ok(None);
                     }
-                    Err(err) => {
-                        error!("TLS plaintext write failed: {err:?}");
-                        return Err(err);
-                    }
+                    Err(err) => return Err(err),
                 };
 
                 match conn.complete_io(&mut StdReadWriteFd(fd)) {
                     Ok(_) => Ok(Some(len)),
                     Err(err) if err.kind() == ErrorKind::WouldBlock => Ok(Some(len)),
-                    Err(err) => {
-                        error!("TLS write failed: {err:?}");
-                        Err(err)
-                    }
+                    Err(err) => Err(err),
                 }
             }
         }

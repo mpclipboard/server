@@ -1,5 +1,4 @@
-/// Platform-specific implementation of the logger.
-pub(crate) struct Logger;
+pub struct Logger;
 
 impl Logger {
     pub(crate) fn init() {

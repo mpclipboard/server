@@ -9,26 +9,22 @@ use crate::{
         writing_handshake_request::WritingHandshakeRequest,
     },
 };
-use anyhow::Context as _;
-use mpclipboard_shared::{Wants, error};
-use std::os::fd::{AsRawFd, BorrowedFd};
+use anyhow::Context;
+use mpclipboard_shared::error;
+use std::os::fd::AsRawFd;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Disconnected {
+pub struct Disconnected {
     last_activity_at: u64,
 }
 
 impl Disconnected {
     const RECONNECT_AFTER: u64 = 3;
 
-    pub fn new(now: u64) -> Self {
+    pub(crate) const fn new(now: u64) -> Self {
         Self {
             last_activity_at: now,
         }
-    }
-
-    pub(crate) fn wants(&self) -> Option<(BorrowedFd<'static>, Wants)> {
-        None
     }
 
     pub(crate) fn try_reconnect(
@@ -36,7 +32,10 @@ impl Disconnected {
         now: u64,
         config: &Config,
     ) -> (ConnectionState, MaybeTlsStream) {
-        if now - self.last_activity_at < Self::RECONNECT_AFTER {
+        let diff = now
+            .checked_sub(self.last_activity_at)
+            .unwrap_or_else(|| unreachable!("time goes backwards"));
+        if diff < Self::RECONNECT_AFTER {
             return (self.into(), MaybeTlsStream::empty());
         }
 
@@ -49,7 +48,7 @@ impl Disconnected {
             }
         };
 
-        let (fd, connected_now) = match connect(&addr) {
+        let (fd, connected_now) = match connect(addr) {
             ConnectResult::Connected(fd) => (fd, true),
             ConnectResult::StillPending(fd) => (fd, false),
             ConnectResult::Failed => {

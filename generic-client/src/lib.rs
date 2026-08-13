@@ -1,4 +1,3 @@
-// #![warn(missing_docs)]
 #![warn(trivial_casts)]
 #![warn(trivial_numeric_casts)]
 #![warn(unused_qualifications)]
@@ -11,17 +10,17 @@
 #![warn(clippy::arithmetic_side_effects)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
-#![allow(clippy::redundant_pub_crate)]
-#![allow(clippy::useless_let_if_seq)]
+#![expect(clippy::large_types_passed_by_value)]
+#![expect(clippy::missing_errors_doc)]
 #![doc = include_str!("../README.md")]
 
 pub use connectivity::Connectivity;
 pub use mpclipboard::MPClipboard;
 pub use output::Output;
 
+pub use ffi::COutput;
 #[cfg(target_os = "android")]
 pub use ffi::mpclipboard_setup_rustls_on_jvm;
-pub use ffi::{COutput, PushResult};
 
 mod config;
 mod connection;
