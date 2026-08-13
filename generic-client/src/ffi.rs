@@ -1,6 +1,6 @@
 use crate::{Connectivity, MPClipboard, Output};
 use anyhow::{Context, Result};
-use mpclipboard_shared::{error, info};
+use mpclipboard_shared::error;
 use std::{ffi::c_char, os::fd::AsRawFd};
 
 macro_rules! try_or_null {
@@ -134,12 +134,6 @@ pub extern "C" fn mpclipboard_push_text(
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_drop(mpclipboard: *mut MPClipboard) {
     unsafe { core::ptr::drop_in_place(mpclipboard) };
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_logger_test() {
-    info!("info example");
-    error!("error example");
 }
 
 #[cfg(target_os = "android")]
