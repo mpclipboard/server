@@ -42,7 +42,4 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
       shell: bash
-      run:
-        rid=$(gh api repos/${{ github.repository }}/releases --jq '.[] | select(.name=="latest") | .id')
-
-        gh api --method PATCH repos/${{ github.repository }}/releases/$rid -f make_latest=true
+      run: gh release edit latest --latest=true -R ${{ github.repository }}
