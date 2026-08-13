@@ -43,6 +43,6 @@ runs:
         GH_TOKEN: ${{ github.token }}
       shell: bash
       run:
-        rid=$(gh api repos/${{ github.repository }}/releases --jq '.[] | select(.name=="latest") | .id')
+        rid=$(gh release view latest -R ${{ github.repository }} --json "id" --jq ".id")
 
         gh api --method PATCH repos/${{ github.repository }}/releases/$rid -f make_latest=true
