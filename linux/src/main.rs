@@ -83,7 +83,7 @@ fn main() -> Result<()> {
         {
             log::trace!("Copied: {text:?}");
             tray.push(format!("S {text}"), &mut queue)?;
-            mpclipboard.push_text(&text);
+            mpclipboard.push_text(&text)?;
         }
     }
 

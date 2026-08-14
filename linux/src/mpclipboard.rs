@@ -25,7 +25,7 @@ impl MPClipboard {
         self.mpclipboard.read()
     }
 
-    pub(crate) fn push_text(&mut self, text: &str) -> bool {
+    pub(crate) fn push_text(&mut self, text: &str) -> Result<bool> {
         self.mpclipboard.push_text(text)
     }
 }
