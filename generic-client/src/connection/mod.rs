@@ -150,13 +150,19 @@ impl Connection {
     pub(crate) fn on_readable(&mut self, now: u64) -> Option<Message> {
         match self.state {
             ConnectionState::TlsHandshake(s) => {
-                self.with_stream(|stream, config| (s.finish(now, config, stream), None))
+                let next = s.finish(now, &self.config, &mut self.stream);
+                self.transition(next);
+                None
             }
             ConnectionState::ReadingHandshakeResponse(s) => {
-                self.with_stream(|stream, _config| s.read(now, stream))
+                let (next, message) = s.read(now, &mut self.stream);
+                self.transition(next);
+                message
             }
             ConnectionState::Connected(s) => {
-                self.with_stream(|stream, _config| s.read(now, stream))
+                let (next, message) = s.read(now, &mut self.stream);
+                self.transition(next);
+                message
             }
 
             ConnectionState::Disconnected(_)
@@ -173,23 +179,26 @@ impl Connection {
                 self.transition(s.finish(now, &self.config, &self.stream));
             }
             ConnectionState::TlsHandshake(s) => {
-                self.with_stream(|stream, config| (s.finish(now, config, stream), None));
+                let next = s.finish(now, &self.config, &mut self.stream);
+                self.transition(next);
             }
             ConnectionState::WritingHandshakeRequest(s) => {
-                self.with_stream(|stream, config| (s.write(now, config, stream), None));
+                let next = s.write(now, &self.config, &mut self.stream);
+                self.transition(next);
             }
             ConnectionState::Connected(s) => {
-                self.with_stream(|stream, _config| (s.write(now, stream), None));
+                let next = s.write(now, &mut self.stream);
+                self.transition(next);
             }
-
             ConnectionState::ReadingHandshakeResponse(s) => {
-                self.with_stream(|stream, _config| match stream.flush(&s.fd()) {
-                    Ok(()) => (s.into(), None),
+                let next = match self.stream.flush(&s.fd()) {
+                    Ok(()) => s.into(),
                     Err(err) => {
                         error!("failed to flush TLS data: {err:?}");
-                        (s.disconnect(now), None)
+                        s.disconnect(now)
                     }
-                });
+                };
+                self.transition(next);
             }
 
             ConnectionState::Disconnected(_) => {
@@ -224,15 +233,6 @@ impl Connection {
 
     pub(crate) const fn connectivity(&self) -> Connectivity {
         self.state.connectivity()
-    }
-
-    fn with_stream(
-        &mut self,
-        f: impl FnOnce(&mut MaybeTlsStream, &Config) -> (ConnectionState, Option<Message>),
-    ) -> Option<Message> {
-        let (next, message) = f(&mut self.stream, &self.config);
-        self.transition(next);
-        message
     }
 }
 

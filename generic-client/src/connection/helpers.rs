@@ -18,7 +18,7 @@ pub fn connect(addr: SocketAddrV4) -> ConnectResult {
     };
     #[cfg(target_os = "macos")]
     match rustix::net::sockopt::set_socket_nosigpipe(&fd, true) {
-        Ok(_) => {}
+        Ok(()) => {}
         Err(err) => {
             error!("failed to setsockopt(SO_NOSIGPIPE): {err:?}");
             return ConnectResult::Failed;

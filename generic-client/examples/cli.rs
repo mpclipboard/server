@@ -23,6 +23,7 @@ fn main() -> Result<()> {
         .unwrap_or_else(|_| print_help_and_exit());
 
     let mut mpclipboard = MPClipboard::new_with_local_config_and_id_override(&id)?;
+    // let mut mpclipboard = MPClipboard::new_with_xdg_config()?;
     let mut stdin = std::io::stdin().lock();
 
     loop {
