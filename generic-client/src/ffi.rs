@@ -108,17 +108,32 @@ pub extern "C" fn mpclipboard_read(mpclipboard: *mut MPClipboard) -> COutput {
     }
 }
 
+#[repr(C)]
+#[derive(Debug)]
+pub enum PushResult {
+    Pushed,
+    Dropped,
+    Error,
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_push_text(
     mpclipboard: *mut MPClipboard,
     ptr: *const c_char,
     len: usize,
-) -> bool {
+) -> PushResult {
     let mpclipboard = unsafe { &mut *mpclipboard };
     let bytes = unsafe { core::slice::from_raw_parts(ptr.cast::<u8>(), len) };
     let text = unsafe { std::str::from_utf8_unchecked(bytes) };
 
-    mpclipboard.push_text(text)
+    match mpclipboard.push_text(text) {
+        Ok(true) => PushResult::Pushed,
+        Ok(false) => PushResult::Dropped,
+        Err(err) => {
+            error!("{err:?}");
+            PushResult::Error
+        }
+    }
 }
 
 #[unsafe(no_mangle)]

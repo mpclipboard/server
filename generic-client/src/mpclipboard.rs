@@ -138,17 +138,23 @@ impl MPClipboard {
         out
     }
 
-    pub fn push_text(&mut self, text: &str) -> bool {
+    pub fn push_text(&mut self, text: &str) -> Result<bool> {
         let Some(text) = NonEmptyInlineString::truncate(text) else {
             info!("Skipping empty text");
-            return false;
+            return Ok(false);
         };
         let message = Message::new(text);
 
         if self.store.add(message) {
-            self.conn.push(message)
+            let pushed = self.conn.push(message);
+
+            self.event_loop
+                .sync(self.conn.wants())
+                .context("failed to update connection fd in event loop")?;
+
+            Ok(pushed)
         } else {
-            false
+            Ok(false)
         }
     }
 }

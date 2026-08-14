@@ -10,6 +10,12 @@ typedef enum {
   MPCLIPBOARD_CONNECTIVITY_DISCONNECTED,
 } mpclipboard_Connectivity;
 
+typedef enum {
+  MPCLIPBOARD_PUSH_RESULT_PUSHED,
+  MPCLIPBOARD_PUSH_RESULT_DROPPED,
+  MPCLIPBOARD_PUSH_RESULT_ERROR,
+} mpclipboard_PushResult;
+
 typedef struct mpclipboard_MPClipboard mpclipboard_MPClipboard;
 
 typedef enum {
@@ -54,6 +60,8 @@ int32_t mpclipboard_get_fd(mpclipboard_MPClipboard *mpclipboard);
 
 mpclipboard_Output mpclipboard_read(mpclipboard_MPClipboard *mpclipboard);
 
-bool mpclipboard_push_text(mpclipboard_MPClipboard *mpclipboard, const char *ptr, size_t len);
+mpclipboard_PushResult mpclipboard_push_text(mpclipboard_MPClipboard *mpclipboard,
+                                             const char *ptr,
+                                             size_t len);
 
 void mpclipboard_drop(mpclipboard_MPClipboard *mpclipboard);
