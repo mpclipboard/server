@@ -71,8 +71,8 @@ class MPClipboardConnectionManager(
         scope.cancel()
     }
 
-    fun pushText(text: String): Boolean {
-        return client?.pushText(text) ?: false
+    fun pushText(text: String): PushResult {
+        return client?.pushText(text) ?: PushResult.Dropped
     }
 
     private fun registerFileDescriptorListener(mpclipboard: MPClipboard) {

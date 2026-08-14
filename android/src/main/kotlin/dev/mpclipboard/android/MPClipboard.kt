@@ -48,8 +48,8 @@ class MPClipboard private constructor(
 
     fun read(): Output? = Ffi.mpclipboard_read(ptr)?.let(Output::from)
 
-    fun pushText(text: String): Boolean {
-        return Ffi.mpclipboard_push_text(ptr, text.toByteArray(Charsets.UTF_8))
+    fun pushText(text: String): PushResult {
+        return PushResult.from(Ffi.mpclipboard_push_text(ptr, text.toByteArray(Charsets.UTF_8)))
     }
 
     fun close() {

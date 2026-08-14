@@ -202,7 +202,7 @@ Java_dev_mpclipboard_android_Ffi_mpclipboard_1read(
     }
 }
 
-JNIEXPORT jboolean JNICALL
+JNIEXPORT jint JNICALL
 Java_dev_mpclipboard_android_Ffi_mpclipboard_1push_1text(
     JNIEnv *env,
     jclass clazz,
@@ -213,21 +213,31 @@ Java_dev_mpclipboard_android_Ffi_mpclipboard_1push_1text(
 
     if (text == NULL) {
         throw_runtime_exception(env, "text must not be null");
-        return JNI_FALSE;
+        return MPCLIPBOARD_PUSH_RESULT_ERROR;
     }
 
     jsize len = (*env)->GetArrayLength(env, text);
     jbyte *bytes = (*env)->GetByteArrayElements(env, text, NULL);
     if (bytes == NULL) {
-        return JNI_FALSE;
+        return MPCLIPBOARD_PUSH_RESULT_ERROR;
     }
 
-    bool sent = mpclipboard_push_text(
+    mpclipboard_PushResult push_result = mpclipboard_push_text(
         (mpclipboard_MPClipboard *) (intptr_t) client_ptr,
         (const char *) bytes,
         (size_t) len
     );
     (*env)->ReleaseByteArrayElements(env, text, bytes, JNI_ABORT);
 
-    return sent ? JNI_TRUE : JNI_FALSE;
+    switch (push_result) {
+        case MPCLIPBOARD_PUSH_RESULT_PUSHED:
+        case MPCLIPBOARD_PUSH_RESULT_DROPPED:
+            return (jint) push_result;
+        case MPCLIPBOARD_PUSH_RESULT_ERROR:
+            throw_runtime_exception(env, "mpclipboard_push_text failed");
+            return (jint) push_result;
+        default:
+            throw_runtime_exception(env, "mpclipboard_push_text returned unknown push result");
+            return MPCLIPBOARD_PUSH_RESULT_ERROR;
+    }
 }

@@ -14,6 +14,10 @@ internal object Ffi {
     const val MPCLIPBOARD_OUTPUT_IGNORE = 3
     const val MPCLIPBOARD_OUTPUT_ERROR = 4
 
+    const val MPCLIPBOARD_PUSH_RESULT_PUSHED = 0
+    const val MPCLIPBOARD_PUSH_RESULT_DROPPED = 1
+    const val MPCLIPBOARD_PUSH_RESULT_ERROR = 2
+
     fun loadLibrary(context: Context) {
         try {
             System.loadLibrary("mpclipboard_android")
@@ -50,5 +54,5 @@ internal object Ffi {
     external fun mpclipboard_read(clientPtr: Long): NativeOutput?
 
     @JvmStatic
-    external fun mpclipboard_push_text(clientPtr: Long, text: ByteArray): Boolean
+    external fun mpclipboard_push_text(clientPtr: Long, text: ByteArray): Int
 }
