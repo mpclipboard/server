@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mpclipboardSource = source
 
         clipboardTimer = clipboard.startPolling(onCopy: { text in
-            if self.mpclipboard.pushText(text) {
+            if self.mpclipboard.pushText(text) == .pushed {
                 self.tray.pushSent(text)
             }
         })

@@ -56,6 +56,11 @@ struct Output {
     }
 }
 
+enum PushResult {
+    case pushed
+    case dropped
+}
+
 final class MPClipboard {
     private let handle: OpaquePointer
 
@@ -83,9 +88,19 @@ final class MPClipboard {
         mpclipboard_get_fd(handle)
     }
 
-    func pushText(_ text: String) -> Bool {
+    func pushText(_ text: String) -> PushResult {
         text.utf8CString.withUnsafeBufferPointer { bytes in
-            mpclipboard_push_text(handle, bytes.baseAddress, bytes.count - 1)
+            let pushResult = mpclipboard_push_text(handle, bytes.baseAddress, bytes.count - 1)
+            switch pushResult {
+            case MPCLIPBOARD_PUSH_RESULT_PUSHED:
+                return .pushed
+            case MPCLIPBOARD_PUSH_RESULT_DROPPED:
+                return .dropped
+            case MPCLIPBOARD_PUSH_RESULT_ERROR:
+                fatalError("failed to push text to MPClipboard")
+            default:
+                fatalError("unsupported push result")
+            }
         }
     }
 
