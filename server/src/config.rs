@@ -7,23 +7,23 @@ pub struct Config {
     pub(crate) token: Token,
 }
 
-const PATH: &str = if cfg!(debug_assertions) {
-    "config.toml"
+const PATH: &[u8] = if cfg!(debug_assertions) {
+    b"config.toml"
 } else {
-    "/etc/mpclipboard-server/config.toml"
+    b"/etc/mpclipboard-server/config.toml"
 };
 
 impl Config {
     pub(crate) fn read() -> Result<Self> {
-        let [url, token] =
-            ConfigParser::parse(PATH, ["url", "token"]).context("failed to parse config")?;
+        ConfigParser::parse(PATH, &mut [0; _], ["url", "token"], |[url, token]| {
+            let url = Url::parse(url).context("malformed url")?;
+            ensure!(!url.is_tls(), "url must have http scheme");
 
-        let url = Url::parse(&url).context("malformed url")?;
-        ensure!(!url.is_tls(), "url must have http scheme");
+            let token = Token::new(token).context("token is too long")?;
 
-        let token = Token::new(&token).context("token is too long")?;
-
-        Ok(Self { url, token })
+            Ok(Self { url, token })
+        })
+        .context("failed to parse config")?
     }
 }
 

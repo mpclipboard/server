@@ -29,10 +29,13 @@ impl Config {
     }
 
     fn read(path: impl AsRef<Path>) -> Result<Self> {
-        let [url, token, id] =
-            ConfigParser::parse(path, ["url", "token", "id"]).context("failed to parse config")?;
-
-        Self::new(&url, &token, &id)
+        ConfigParser::parse(
+            path.as_ref().as_os_str().as_encoded_bytes(),
+            &mut [0; _],
+            ["url", "token", "id"],
+            |[url, token, id]| Self::new(url, token, id),
+        )
+        .context("failed to parse config")?
     }
 
     pub(crate) fn read_local_file() -> Result<Self> {
@@ -40,7 +43,7 @@ impl Config {
     }
 
     pub(crate) fn read_in_xdg_config_dir() -> Result<Self> {
-        let xdg_config_home = std::env::var("$XDG_CONFIG_HOME")
+        let xdg_config_home = std::env::var("XDG_CONFIG_HOME")
             .map(PathBuf::from)
             .context("no $XDG_CONFIG_HOME is set")
             .or_else(|_err| {

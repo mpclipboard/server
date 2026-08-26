@@ -1,3 +1,4 @@
+// #![no_std]
 #![warn(trivial_casts)]
 #![warn(trivial_numeric_casts)]
 #![warn(unused_qualifications)]
@@ -16,7 +17,7 @@
 #![doc = include_str!("../README.md")]
 
 mod config;
-pub use config::ConfigParser;
+pub use config::{ConfigParser, ConfigParserError};
 
 mod http_lines_buffer;
 mod readbuf;
