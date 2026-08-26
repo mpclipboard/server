@@ -83,20 +83,13 @@ impl core::fmt::Debug for Message {
 }
 
 impl Message {
-    pub(crate) fn decode(buf: &[u8; Self::BYTESIZE]) -> std::io::Result<Self> {
-        fn malformed_message_length_err() -> std::io::Error {
-            std::io::Error::other("malformed message length")
-        }
-        fn non_utf8_message_text_err() -> std::io::Error {
-            std::io::Error::other("non-utf8 message text")
-        }
-
+    pub(crate) fn decode(buf: &[u8; Self::BYTESIZE]) -> Result<Self, MessageDecodeError> {
         let (length, buf) = buf.split_first().unwrap_or_else(|| unreachable!());
         let length =
-            NonZeroUsize::new(usize::from(*length)).ok_or_else(malformed_message_length_err)?;
+            NonZeroUsize::new(usize::from(*length)).ok_or(MessageDecodeError::MalformedLength)?;
 
         if length.get() > MAX_TEXT_LEN {
-            return Err(malformed_message_length_err());
+            return Err(MessageDecodeError::MalformedLength);
         }
 
         let (timestamp, buf) = buf
@@ -112,12 +105,29 @@ impl Message {
 
         let string =
             core::str::from_utf8(text.get(..length.get()).unwrap_or_else(|| unreachable!()))
-                .map_err(|_| non_utf8_message_text_err())?;
+                .map_err(|_| MessageDecodeError::NonUtf8Text)?;
         let string = NonEmptyInlineString::new(string).unwrap_or_else(|| unreachable!());
 
         Ok(Self { string, timestamp })
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageDecodeError {
+    MalformedLength,
+    NonUtf8Text,
+}
+
+impl core::fmt::Display for MessageDecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::MalformedLength => f.write_str("malformed message length"),
+            Self::NonUtf8Text => f.write_str("non-utf8 message text"),
+        }
+    }
+}
+
+impl core::error::Error for MessageDecodeError {}
 
 #[cfg(test)]
 mod tests {

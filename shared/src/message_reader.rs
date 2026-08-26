@@ -1,4 +1,4 @@
-use crate::{Message, reader::Reader};
+use crate::{Message, MessageDecodeError, reader::Reader};
 
 #[must_use]
 #[derive(Debug, Clone, Copy)]
@@ -13,16 +13,19 @@ impl MessageReader {
         }
     }
 
-    pub fn new_with_data(buf: &[u8]) -> (Self, Option<std::io::Result<Message>>) {
+    pub fn new_with_data(buf: &[u8]) -> (Self, Option<Result<Message, MessageDecodeError>>) {
         let (inner, buf) = Reader::new_with_data(buf);
-        let message = buf.map(|buf| Message::decode(&buf));
+        let message = buf.as_ref().map(Message::decode);
 
         (Self { inner }, message)
     }
 
-    pub fn received(&mut self, data: &[u8]) -> (usize, Option<std::io::Result<Message>>) {
+    pub fn received(
+        &mut self,
+        data: &[u8],
+    ) -> (usize, Option<Result<Message, MessageDecodeError>>) {
         let (consumed, buf) = self.inner.received(data);
-        (consumed, buf.map(|buf| Message::decode(&buf)))
+        (consumed, buf.as_ref().map(Message::decode))
     }
 
     #[must_use]

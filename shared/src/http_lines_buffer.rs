@@ -22,15 +22,16 @@ impl<const N: usize> HttpLinesBuffer<N> {
         self.pos
     }
 
-    pub(crate) fn received(&mut self, len: NonZeroUsize) -> std::io::Result<()> {
+    pub(crate) fn received(
+        &mut self,
+        len: NonZeroUsize,
+    ) -> Result<(), HttpLinesBufferOverflowError> {
         let newpos = self
             .pos
             .checked_add(len.get())
-            .ok_or_else(|| std::io::Error::other("HttpLinesBuffer len overflow"))?;
+            .ok_or(HttpLinesBufferOverflowError)?;
         if newpos > N {
-            return Err(std::io::Error::other(format!(
-                "HttpLinesBuffer: received() call overflows the buffer: {newpos} vs {N}"
-            )));
+            return Err(HttpLinesBufferOverflowError);
         }
         self.pos = newpos;
         Ok(())
@@ -48,16 +49,38 @@ impl<const N: usize> HttpLinesBuffer<N> {
         Some(line)
     }
 
-    pub(crate) fn consumed(&mut self, len: usize) -> std::io::Result<()> {
+    pub(crate) fn consumed(&mut self, len: usize) -> Result<(), HttpLinesBufferUnderflowError> {
         let newpos = self
             .pos
             .checked_sub(len)
-            .ok_or_else(|| std::io::Error::other("HttpLinesBuffer: given len > pos"))?;
+            .ok_or(HttpLinesBufferUnderflowError)?;
         self.buf.copy_within(len..self.pos, 0);
         self.pos = newpos;
         Ok(())
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HttpLinesBufferOverflowError;
+
+impl core::fmt::Display for HttpLinesBufferOverflowError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("HTTP lines buffer overflow")
+    }
+}
+
+impl core::error::Error for HttpLinesBufferOverflowError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HttpLinesBufferUnderflowError;
+
+impl core::fmt::Display for HttpLinesBufferUnderflowError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("HTTP lines buffer underflow")
+    }
+}
+
+impl core::error::Error for HttpLinesBufferUnderflowError {}
 
 #[cfg(test)]
 mod tests {
@@ -70,7 +93,13 @@ mod tests {
         let line3 = "Upgrade: mpclipboard-raw\r\n";
         let line4 = "Server: Caddy\r\n";
 
-        let response = format!("{line1}{line2}{line3}{line4}\r\nABC");
+        let response = concat!(
+            "HTTP/1.1 101 Switching Protocols\r\n",
+            "Connection: Upgrade\r\n",
+            "Upgrade: mpclipboard-raw\r\n",
+            "Server: Caddy\r\n",
+            "\r\nABC",
+        );
 
         let mut buffer = HttpLinesBuffer::<128>::new();
         buffer.remainder()[..response.len()].copy_from_slice(response.as_bytes());

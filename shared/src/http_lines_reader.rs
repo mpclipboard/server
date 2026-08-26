@@ -1,5 +1,7 @@
-use crate::http_lines_buffer::HttpLinesBuffer;
-use core::num::NonZeroUsize;
+use crate::http_lines_buffer::{
+    HttpLinesBuffer, HttpLinesBufferOverflowError, HttpLinesBufferUnderflowError,
+};
+use core::{num::NonZeroUsize, str::Utf8Error};
 
 #[derive(Debug, Clone, Copy)]
 pub struct HttpLinesReader<P, const N: usize>
@@ -23,7 +25,10 @@ where
         }
     }
 
-    pub(crate) fn received(&mut self, data: &[u8]) -> std::io::Result<(usize, Option<P::Output>)> {
+    pub(crate) fn received(
+        &mut self,
+        data: &[u8],
+    ) -> Result<(usize, Option<P::Output>), HttpLinesReaderError<P::Error>> {
         let received = {
             let remainder = self.buf.remainder();
             let len = remainder.len().min(data.len());
@@ -35,29 +40,33 @@ where
                         .unwrap_or_else(|| unreachable!("write range exceeds input")),
                 );
             if let Some(len) = NonZeroUsize::new(len) {
-                self.buf.received(len)?;
+                self.buf
+                    .received(len)
+                    .map_err(HttpLinesReaderError::BufferOverflow)?;
             }
 
             len
         };
 
         while let Some(line) = self.buf.next_line() {
-            let line = core::str::from_utf8(line).map_err(|err| {
-                std::io::Error::other(format!("non-utf8 handshake line: {err:?}"))
-            })?;
+            let line = core::str::from_utf8(line).map_err(HttpLinesReaderError::InvalidUtf8)?;
 
             if line == "\r\n" {
                 self.seen_end = true;
             } else {
-                self.parser.line_received(line)?;
+                self.parser
+                    .line_received(line)
+                    .map_err(HttpLinesReaderError::Parser)?;
             }
-            self.buf.consumed(line.len())?;
+            self.buf
+                .consumed(line.len())
+                .map_err(HttpLinesReaderError::BufferUnderflow)?;
 
             if self.seen_end {
                 let output = self
                     .parser
                     .try_finish()
-                    .ok_or_else(|| std::io::Error::other("incomplete HTTP upgrade handshake"))?;
+                    .ok_or(HttpLinesReaderError::IncompleteHandshake)?;
                 let consumed = received
                     .checked_sub(self.buf.len())
                     .unwrap_or_else(|| unreachable!("HTTP leftover exceeds received input"));
@@ -66,17 +75,43 @@ where
         }
 
         if received != data.len() || self.buf.remainder().is_empty() {
-            return Err(std::io::Error::other("HTTP handshake exceeds buffer"));
+            return Err(HttpLinesReaderError::HandshakeExceedsBuffer);
         }
 
         Ok((received, None))
     }
 }
 
+#[derive(Debug)]
+pub enum HttpLinesReaderError<E> {
+    BufferOverflow(HttpLinesBufferOverflowError),
+    BufferUnderflow(HttpLinesBufferUnderflowError),
+    InvalidUtf8(Utf8Error),
+    Parser(E),
+    IncompleteHandshake,
+    HandshakeExceedsBuffer,
+}
+
+impl<E: core::fmt::Display> core::fmt::Display for HttpLinesReaderError<E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::BufferOverflow(error) => error.fmt(f),
+            Self::BufferUnderflow(error) => error.fmt(f),
+            Self::InvalidUtf8(error) => write!(f, "non-utf8 handshake line: {error}"),
+            Self::Parser(error) => error.fmt(f),
+            Self::IncompleteHandshake => f.write_str("incomplete HTTP upgrade handshake"),
+            Self::HandshakeExceedsBuffer => f.write_str("HTTP handshake exceeds buffer"),
+        }
+    }
+}
+
+impl<E: core::error::Error + 'static> core::error::Error for HttpLinesReaderError<E> {}
+
 pub trait HttpLinesParser {
     type Output;
+    type Error;
 
     fn new() -> Self;
-    fn line_received(&mut self, line: &str) -> std::io::Result<()>;
+    fn line_received(&mut self, line: &str) -> Result<(), Self::Error>;
     fn try_finish(&self) -> Option<Self::Output>;
 }

@@ -7,12 +7,25 @@ pub struct REvents {
 }
 
 impl REvents {
-    pub fn new(revents: PollFlags) -> std::io::Result<Self> {
+    pub fn new(revents: PollFlags) -> Result<Self, REventsError> {
         if revents.intersects(PollFlags::HUP | PollFlags::ERR | PollFlags::NVAL) {
-            return Err(std::io::Error::other(format!("got revents: {revents:?}")));
+            return Err(REventsError { revents });
         }
         let readable = revents.contains(PollFlags::IN);
         let writable = revents.contains(PollFlags::OUT);
         Ok(Self { readable, writable })
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct REventsError {
+    revents: PollFlags,
+}
+
+impl core::fmt::Display for REventsError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "got revents: {:?}", self.revents)
+    }
+}
+
+impl core::error::Error for REventsError {}

@@ -1,11 +1,12 @@
 use crate::trace;
 use core::time::Duration;
-use rustix::net::sockopt::{
-    set_socket_keepalive, set_tcp_keepcnt, set_tcp_keepidle, set_tcp_keepintvl,
+use rustix::{
+    io::Errno,
+    net::sockopt::{set_socket_keepalive, set_tcp_keepcnt, set_tcp_keepidle, set_tcp_keepintvl},
 };
 use std::os::fd::AsFd;
 
-pub fn enable_tcp_keep_alive(fd: &impl AsFd) -> std::io::Result<()> {
+pub fn enable_tcp_keep_alive(fd: &impl AsFd) -> Result<(), Errno> {
     trace!("Configuring TCP keepalive");
 
     set_socket_keepalive(fd, true)?;

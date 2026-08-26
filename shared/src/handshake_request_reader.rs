@@ -1,7 +1,7 @@
 use crate::{
     CONNECTION_UPGRADE_HEADER, HOST_PREFIX, HandshakeRequest, Host, ID, ID_PREFIX, START_LINE,
     TOKEN_PREFIX, Token, UPGRADE_MPCLIPBOARD_RAW_HEADER,
-    http_lines_reader::{HttpLinesParser, HttpLinesReader},
+    http_lines_reader::{HttpLinesParser, HttpLinesReader, HttpLinesReaderError},
     strip_prefix_ignore_ascii_case,
 };
 
@@ -18,6 +18,7 @@ struct HandshakeRequestParser {
 
 impl HttpLinesParser for HandshakeRequestParser {
     type Output = HandshakeRequest;
+    type Error = HandshakeRequestParserError;
 
     fn new() -> Self {
         Self {
@@ -30,26 +31,22 @@ impl HttpLinesParser for HandshakeRequestParser {
         }
     }
 
-    fn line_received(&mut self, line: &str) -> std::io::Result<()> {
+    fn line_received(&mut self, line: &str) -> Result<(), Self::Error> {
         if line.starts_with(START_LINE) {
             self.seen_start_line = true;
         } else if let Some(value) = strip_prefix_ignore_ascii_case(line, HOST_PREFIX)
             && let Some(value) = value.strip_suffix("\r\n")
         {
-            self.host = Some(
-                Host::new(value).ok_or_else(|| std::io::Error::other("malformed Host header"))?,
-            );
+            self.host = Some(Host::new(value).ok_or(HandshakeRequestParserError::MalformedHost)?);
         } else if let Some(value) = strip_prefix_ignore_ascii_case(line, TOKEN_PREFIX)
             && let Some(value) = value.strip_suffix("\r\n")
         {
-            self.token = Some(
-                Token::new(value).ok_or_else(|| std::io::Error::other("malformed Token header"))?,
-            );
+            self.token =
+                Some(Token::new(value).ok_or(HandshakeRequestParserError::MalformedToken)?);
         } else if let Some(value) = strip_prefix_ignore_ascii_case(line, ID_PREFIX)
             && let Some(value) = value.strip_suffix("\r\n")
         {
-            self.id =
-                Some(ID::new(value).ok_or_else(|| std::io::Error::other("malformed Id header"))?);
+            self.id = Some(ID::new(value).ok_or(HandshakeRequestParserError::MalformedId)?);
         } else if strip_prefix_ignore_ascii_case(line, CONNECTION_UPGRADE_HEADER) == Some("\r\n") {
             self.seen_connection_upgrade = true;
         } else if strip_prefix_ignore_ascii_case(line, UPGRADE_MPCLIPBOARD_RAW_HEADER)
@@ -76,6 +73,25 @@ impl HttpLinesParser for HandshakeRequestParser {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HandshakeRequestParserError {
+    MalformedHost,
+    MalformedToken,
+    MalformedId,
+}
+
+impl core::fmt::Display for HandshakeRequestParserError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::MalformedHost => f.write_str("malformed Host header"),
+            Self::MalformedToken => f.write_str("malformed Token header"),
+            Self::MalformedId => f.write_str("malformed ID header"),
+        }
+    }
+}
+
+impl core::error::Error for HandshakeRequestParserError {}
+
 #[must_use]
 #[derive(Debug, Clone, Copy)]
 pub struct HandshakeRequestReader {
@@ -89,7 +105,11 @@ impl HandshakeRequestReader {
         }
     }
 
-    pub fn received(&mut self, data: &[u8]) -> std::io::Result<(usize, Option<HandshakeRequest>)> {
+    pub fn received(
+        &mut self,
+        data: &[u8],
+    ) -> Result<(usize, Option<HandshakeRequest>), HttpLinesReaderError<HandshakeRequestParserError>>
+    {
         self.inner.received(data)
     }
 }

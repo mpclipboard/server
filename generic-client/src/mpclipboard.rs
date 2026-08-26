@@ -6,7 +6,6 @@ use mpclipboard_shared::{
 use std::{
     os::fd::{AsFd, AsRawFd, BorrowedFd},
     sync::OnceLock,
-    time::Duration,
 };
 
 pub struct MPClipboard {
@@ -80,8 +79,8 @@ impl MPClipboard {
     pub fn read(&mut self) -> Result<Option<Output>> {
         let polled = self
             .event_loop
-            .wait(Some(Duration::from_secs(0)))
-            .context("failed to wait() on event loop")?;
+            .drain_events_without_waiting()
+            .context("failed to drain event loop")?;
 
         let prev_connectivity = self.conn.connectivity();
         let message = if let Some(message) = self.drain(&polled)

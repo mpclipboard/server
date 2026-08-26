@@ -1,10 +1,15 @@
 use super::{Diff, EventLoopResult, FdState};
 use crate::{Timerfd, Wants};
-use core::time::Duration;
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
+use core::mem::MaybeUninit;
+use rustix::{
+    event::epoll,
+    fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd, RawFd},
+    fs::Timespec,
+    io::Errno,
+};
 
 pub struct EventLoop {
-    epoll_fd: RawFd,
+    epoll_fd: OwnedFd,
     timer: Timerfd,
     fd: FdState,
 }
@@ -13,8 +18,8 @@ impl EventLoop {
     const TIMER_ID: u64 = 1;
     const FD_ID: u64 = 2;
 
-    pub fn new() -> std::io::Result<Self> {
-        let epoll_fd = epoll::create(true)?;
+    pub fn new() -> Result<Self, EpollError> {
+        let epoll_fd = epoll::create(epoll::CreateFlags::CLOEXEC)?;
 
         let this = Self {
             epoll_fd,
@@ -26,7 +31,7 @@ impl EventLoop {
         Ok(this)
     }
 
-    pub fn sync(&mut self, wants: Option<(BorrowedFd<'static>, Wants)>) -> std::io::Result<()> {
+    pub fn sync(&mut self, wants: Option<(BorrowedFd<'static>, Wants)>) -> Result<(), EpollError> {
         match self.fd.transition(wants) {
             Diff::Add { fd, wants } => {
                 self.add(fd, Self::FD_ID, wants)?;
@@ -51,38 +56,42 @@ impl EventLoop {
         Ok(())
     }
 
-    pub fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<EventLoopResult> {
-        let mut events = [epoll::Event::new(epoll::Events::empty(), 0); 4];
-        let len = epoll::wait(self.epoll_fd, Self::timeout_to_ms(timeout), &mut events)?;
+    pub fn drain_events_without_waiting(&mut self) -> Result<EventLoopResult, EpollError> {
+        let mut events = [MaybeUninit::uninit(); 4];
+        let timeout = Timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        let (events, _) = epoll::wait(&self.epoll_fd, &mut events, Some(&timeout))?;
 
         let mut out = EventLoopResult {
             time: None,
             fd: None,
         };
 
-        for event in events.iter().take(len) {
-            match event.data {
+        for event in events {
+            match event.data.u64() {
                 Self::TIMER_ID => {
                     let time = self.drain_timer()?;
                     out.time = Some(time);
                 }
 
                 Self::FD_ID => {
-                    let flags = epoll::Events::from_bits_retain(event.events);
+                    let flags = event.flags;
                     out.fd = Some((
-                        flags.contains(epoll::Events::EPOLLIN),
-                        flags.contains(epoll::Events::EPOLLOUT),
+                        flags.contains(epoll::EventFlags::IN),
+                        flags.contains(epoll::EventFlags::OUT),
                         flags.intersects(
-                            epoll::Events::EPOLLERR
-                                | epoll::Events::EPOLLHUP
-                                | epoll::Events::EPOLLRDHUP,
+                            epoll::EventFlags::ERR
+                                | epoll::EventFlags::HUP
+                                | epoll::EventFlags::RDHUP,
                         ),
                     ));
                 }
 
                 _ => {
-                    let id = event.data;
-                    return Err(std::io::Error::other(format!("unknown event {id}")));
+                    let id = event.data.u64();
+                    return Err(EpollError::UnknownEvent { id });
                 }
             }
         }
@@ -90,81 +99,84 @@ impl EventLoop {
         Ok(out)
     }
 
-    fn add(&self, fd: BorrowedFd<'static>, id: u64, wants: Wants) -> std::io::Result<()> {
-        epoll::ctl(
-            self.epoll_fd,
-            epoll::ControlOptions::EPOLL_CTL_ADD,
-            fd.as_raw_fd(),
-            Self::event(wants, id),
+    fn add(&self, fd: BorrowedFd<'static>, id: u64, wants: Wants) -> Result<(), EpollError> {
+        epoll::add(
+            &self.epoll_fd,
+            fd,
+            epoll::EventData::new_u64(id),
+            Self::event_flags(wants),
         )?;
         Ok(())
     }
 
     fn delete(&self, fd: BorrowedFd<'static>) {
-        let _ = epoll::ctl(
-            self.epoll_fd,
-            epoll::ControlOptions::EPOLL_CTL_DEL,
-            fd.as_raw_fd(),
-            epoll::Event::new(epoll::Events::empty(), 0),
-        );
+        let _ = epoll::delete(&self.epoll_fd, fd);
     }
 
-    fn modify(&self, fd: BorrowedFd<'static>, id: u64, wants: Wants) -> std::io::Result<()> {
-        epoll::ctl(
-            self.epoll_fd,
-            epoll::ControlOptions::EPOLL_CTL_MOD,
-            fd.as_raw_fd(),
-            Self::event(wants, id),
+    fn modify(&self, fd: BorrowedFd<'static>, id: u64, wants: Wants) -> Result<(), EpollError> {
+        epoll::modify(
+            &self.epoll_fd,
+            fd,
+            epoll::EventData::new_u64(id),
+            Self::event_flags(wants),
         )?;
         Ok(())
     }
 
-    fn event(wants: Wants, id: u64) -> epoll::Event {
-        let events = match wants {
-            Wants::Read => epoll::Events::EPOLLIN,
-            Wants::Write => epoll::Events::EPOLLOUT,
-            Wants::ReadWrite => epoll::Events::EPOLLIN | epoll::Events::EPOLLOUT,
-        } | epoll::Events::EPOLLRDHUP;
-        epoll::Event::new(events, id)
+    fn event_flags(wants: Wants) -> epoll::EventFlags {
+        (match wants {
+            Wants::Read => epoll::EventFlags::IN,
+            Wants::Write => epoll::EventFlags::OUT,
+            Wants::ReadWrite => epoll::EventFlags::IN | epoll::EventFlags::OUT,
+        }) | epoll::EventFlags::RDHUP
     }
 
-    fn timeout_to_ms(timeout: Option<Duration>) -> i32 {
-        let Some(timeout) = timeout else {
-            return -1;
-        };
-
-        i32::try_from(timeout.as_millis()).unwrap_or(i32::MAX)
-    }
-
-    fn add_timer(&self) -> std::io::Result<()> {
-        epoll::ctl(
-            self.epoll_fd,
-            epoll::ControlOptions::EPOLL_CTL_ADD,
-            self.timer.as_raw_fd(),
-            epoll::Event::new(epoll::Events::EPOLLIN, Self::TIMER_ID),
+    fn add_timer(&self) -> Result<(), EpollError> {
+        epoll::add(
+            &self.epoll_fd,
+            &self.timer,
+            epoll::EventData::new_u64(Self::TIMER_ID),
+            epoll::EventFlags::IN,
         )?;
         Ok(())
     }
 
-    fn drain_timer(&mut self) -> std::io::Result<u64> {
-        self.timer.read()
+    fn drain_timer(&mut self) -> Result<u64, EpollError> {
+        Ok(self.timer.read()?)
+    }
+}
+
+#[derive(Debug)]
+pub enum EpollError {
+    Errno(Errno),
+    UnknownEvent { id: u64 },
+}
+
+impl core::fmt::Display for EpollError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Errno(errno) => write!(f, "{errno}"),
+            Self::UnknownEvent { id } => write!(f, "unknown epoll event {id}"),
+        }
+    }
+}
+
+impl core::error::Error for EpollError {}
+
+impl From<Errno> for EpollError {
+    fn from(error: Errno) -> Self {
+        Self::Errno(error)
     }
 }
 
 impl AsFd for EventLoop {
     fn as_fd(&self) -> BorrowedFd<'_> {
-        unsafe { BorrowedFd::borrow_raw(self.epoll_fd) }
+        self.epoll_fd.as_fd()
     }
 }
 
 impl AsRawFd for EventLoop {
     fn as_raw_fd(&self) -> RawFd {
-        self.epoll_fd
-    }
-}
-
-impl Drop for EventLoop {
-    fn drop(&mut self) {
-        let _ = epoll::close(self.epoll_fd);
+        self.epoll_fd.as_raw_fd()
     }
 }

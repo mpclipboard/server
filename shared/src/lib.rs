@@ -20,7 +20,9 @@ mod config;
 pub use config::{ConfigParser, ConfigParserError};
 
 mod http_lines_buffer;
+pub use http_lines_buffer::{HttpLinesBufferOverflowError, HttpLinesBufferUnderflowError};
 mod http_lines_reader;
+pub use http_lines_reader::HttpLinesReaderError;
 
 mod readbuf;
 mod reader;
@@ -34,7 +36,7 @@ mod handshake_request;
 pub use handshake_request::HandshakeRequest;
 
 mod handshake_request_reader;
-pub use handshake_request_reader::HandshakeRequestReader;
+pub use handshake_request_reader::{HandshakeRequestParserError, HandshakeRequestReader};
 
 mod handshake_request_writer;
 pub use handshake_request_writer::HandshakeRequestWriter;
@@ -42,13 +44,13 @@ pub use handshake_request_writer::HandshakeRequestWriter;
 mod handshake_response;
 
 mod handshake_response_reader;
-pub use handshake_response_reader::HandshakeResponseReader;
+pub use handshake_response_reader::{HandshakeResponseParserError, HandshakeResponseReader};
 
 mod handshake_response_writer;
 pub use handshake_response_writer::HandshakeResponseWriter;
 
 mod message;
-pub use message::Message;
+pub use message::{Message, MessageDecodeError};
 
 mod message_reader;
 pub use message_reader::MessageReader;
@@ -86,13 +88,15 @@ mod wants;
 pub use wants::Wants;
 
 mod event_loop;
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub use event_loop::EpollError;
 pub use event_loop::{EventLoop, EventLoopResult};
 
 #[doc(hidden)]
 pub mod logger;
 
 mod revents;
-pub use revents::REvents;
+pub use revents::{REvents, REventsError};
 
 mod store;
 pub use store::Store;

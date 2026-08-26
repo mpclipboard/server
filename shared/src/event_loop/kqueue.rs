@@ -53,9 +53,9 @@ impl EventLoop {
         Ok(())
     }
 
-    pub fn wait(&mut self, timeout: Option<Duration>) -> std::io::Result<EventLoopResult> {
+    pub fn drain_events_without_waiting(&mut self) -> std::io::Result<EventLoopResult> {
         let mut events = [Self::empty_event(); 4];
-        let len = unsafe { kq::kevent(&self.kqueue_fd, &[], &mut events, timeout)? };
+        let len = unsafe { kq::kevent(&self.kqueue_fd, &[], &mut events, Some(Duration::ZERO))? };
 
         let mut out = EventLoopResult {
             time: None,

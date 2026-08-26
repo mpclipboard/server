@@ -1,5 +1,6 @@
 use rustix::{
     fs::Timespec,
+    io::Errno,
     time::{
         Itimerspec, TimerfdClockId, TimerfdFlags, TimerfdTimerFlags, timerfd_create,
         timerfd_settime,
@@ -15,7 +16,7 @@ pub struct Timerfd {
 }
 
 impl Timerfd {
-    pub fn new() -> std::io::Result<Self> {
+    pub fn new() -> Result<Self, Errno> {
         let fd = timerfd_create(
             TimerfdClockId::Realtime,
             TimerfdFlags::CLOEXEC | TimerfdFlags::NONBLOCK,
@@ -39,16 +40,13 @@ impl Timerfd {
         Ok(Self { fd, time: 0 })
     }
 
-    pub fn read(&mut self) -> std::io::Result<u64> {
+    pub fn read(&mut self) -> Result<u64, Errno> {
         let mut buf = [0u8; 8];
         let len = rustix::io::read(&self.fd, &mut buf)?;
         assert_eq!(len, 8);
 
         let d = u64::from_le_bytes(buf);
-        self.time = self
-            .time
-            .checked_add(d)
-            .ok_or_else(|| std::io::Error::other("timer overflow"))?;
+        self.time = self.time.checked_add(d).ok_or(Errno::OVERFLOW)?;
 
         Ok(self.time)
     }

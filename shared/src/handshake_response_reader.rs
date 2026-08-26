@@ -1,6 +1,6 @@
 use crate::{
     CONNECTION_UPGRADE_HEADER, UPGRADE_MPCLIPBOARD_RAW_HEADER,
-    http_lines_reader::{HttpLinesParser, HttpLinesReader},
+    http_lines_reader::{HttpLinesParser, HttpLinesReader, HttpLinesReaderError},
     message::Message,
     strip_prefix_ignore_ascii_case,
 };
@@ -15,6 +15,7 @@ struct HandshakeResponseParser {
 
 impl HttpLinesParser for HandshakeResponseParser {
     type Output = ();
+    type Error = HandshakeResponseParserError;
 
     fn new() -> Self {
         Self {
@@ -24,7 +25,7 @@ impl HttpLinesParser for HandshakeResponseParser {
         }
     }
 
-    fn line_received(&mut self, line: &str) -> std::io::Result<()> {
+    fn line_received(&mut self, line: &str) -> Result<(), Self::Error> {
         if line.starts_with("HTTP/1.1 101 Switching Protocols") {
             self.seen_start_line = true;
         } else if strip_prefix_ignore_ascii_case(line, CONNECTION_UPGRADE_HEADER) == Some("\r\n") {
@@ -47,6 +48,17 @@ impl HttpLinesParser for HandshakeResponseParser {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HandshakeResponseParserError {}
+
+impl core::fmt::Display for HandshakeResponseParserError {
+    fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match *self {}
+    }
+}
+
+impl core::error::Error for HandshakeResponseParserError {}
+
 #[must_use]
 #[derive(Debug, Clone, Copy)]
 pub struct HandshakeResponseReader {
@@ -60,7 +72,10 @@ impl HandshakeResponseReader {
         }
     }
 
-    pub fn received(&mut self, data: &[u8]) -> std::io::Result<(usize, Option<()>)> {
+    pub fn received(
+        &mut self,
+        data: &[u8],
+    ) -> Result<(usize, Option<()>), HttpLinesReaderError<HandshakeResponseParserError>> {
         self.inner.received(data)
     }
 }

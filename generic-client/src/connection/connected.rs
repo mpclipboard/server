@@ -1,7 +1,7 @@
 use crate::connection::{
     ConnectionState, disconnected::Disconnected, maybe_tls_stream::MaybeTlsStream,
 };
-use mpclipboard_shared::{Message, MessageReader, MessageWriter, Wants, error};
+use mpclipboard_shared::{Message, MessageDecodeError, MessageReader, MessageWriter, Wants, error};
 use std::os::fd::{AsRawFd, BorrowedFd};
 
 #[derive(Debug, Clone, Copy)]
@@ -15,7 +15,7 @@ impl Connected {
     pub(crate) fn new(
         fd: BorrowedFd<'static>,
         data: &[u8],
-    ) -> (Self, Option<std::io::Result<Message>>) {
+    ) -> (Self, Option<Result<Message, MessageDecodeError>>) {
         let (reader, buf) = MessageReader::new_with_data(data);
 
         (

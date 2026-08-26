@@ -4,7 +4,7 @@ use std::os::fd::{AsRawFd, BorrowedFd};
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod epoll;
 #[cfg(any(target_os = "linux", target_os = "android"))]
-pub use epoll::EventLoop;
+pub use epoll::{EpollError, EventLoop};
 
 #[cfg(target_os = "macos")]
 mod kqueue;
