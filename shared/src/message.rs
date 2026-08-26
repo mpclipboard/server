@@ -12,7 +12,7 @@ pub struct Message {
 }
 
 impl Message {
-    pub(crate) const BYTESIZE: usize = size_of::<u8>() + size_of::<u128>() + MAX_TEXT_LEN;
+    pub const BYTESIZE: usize = size_of::<u8>() + size_of::<u128>() + MAX_TEXT_LEN;
 
     pub fn new(string: NonEmptyInlineString<MAX_TEXT_LEN>) -> Self {
         let timestamp = SystemTime::now()

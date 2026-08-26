@@ -1,5 +1,4 @@
-use crate::{ByteStream, Message, reader::Reader};
-use std::os::fd::AsFd;
+use crate::{Message, reader::Reader};
 
 #[must_use]
 #[derive(Debug, Clone, Copy)]
@@ -21,16 +20,14 @@ impl MessageReader {
         (Self { inner }, message)
     }
 
-    pub fn read_from(
-        &mut self,
-        stream: &mut impl ByteStream,
-        fd: &impl AsFd,
-    ) -> std::io::Result<Option<Message>> {
-        let Some(buf) = self.inner.read_from(stream, fd)? else {
-            return Ok(None);
-        };
-        let message = Message::decode(&buf)?;
-        Ok(Some(message))
+    pub fn received(&mut self, data: &[u8]) -> (usize, Option<std::io::Result<Message>>) {
+        let (consumed, buf) = self.inner.received(data);
+        (consumed, buf.map(|buf| Message::decode(&buf)))
+    }
+
+    #[must_use]
+    pub fn bytes_needed(&self) -> usize {
+        self.inner.remaining()
     }
 }
 

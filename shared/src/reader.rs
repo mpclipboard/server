@@ -1,5 +1,4 @@
-use crate::{byte_stream::ByteStream, readbuf::Readbuf, trace};
-use std::os::fd::AsFd;
+use crate::{readbuf::Readbuf, trace};
 
 #[must_use]
 #[derive(Debug, Clone, Copy)]
@@ -29,65 +28,20 @@ impl<const N: usize> Reader<N> {
         )
     }
 
-    pub(crate) fn read_from(
-        &mut self,
-        stream: &mut impl ByteStream,
-        fd: &impl AsFd,
-    ) -> std::io::Result<Option<[u8; N]>> {
-        loop {
-            match stream.read_bytes(fd, self.readbuf.remainder())? {
-                Some(len) => {
-                    trace!("received {len} bytes");
-                    if let Some(buf) = self.readbuf.received(len) {
-                        return Ok(Some(buf));
-                    }
-                }
-                None => return Ok(None),
-            }
-        }
+    pub(crate) fn received(&mut self, data: &[u8]) -> (usize, Option<[u8; N]>) {
+        trace!("received {} bytes", data.len());
+        self.readbuf.received(data)
+    }
+
+    pub(crate) fn remaining(&self) -> usize {
+        self.readbuf.remaining()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{NonEmptyInlineString, byte_stream::ByteStream, message::Message};
-    use core::num::NonZeroUsize;
-    use std::os::fd::AsFd;
-
-    struct Stream<'a> {
-        data: &'a [u8],
-    }
-
-    impl ByteStream for Stream<'_> {
-        fn read_bytes(
-            &mut self,
-            _fd: &impl AsFd,
-            buf: &mut [u8],
-        ) -> std::io::Result<Option<NonZeroUsize>> {
-            if self.data.is_empty() {
-                return Ok(None);
-            }
-
-            let len = self.data.len().min(buf.len());
-            buf.get_mut(..len)
-                .unwrap_or_else(|| unreachable!())
-                .copy_from_slice(self.data.get(..len).unwrap_or_else(|| unreachable!()));
-            self.data = self.data.get(len..).unwrap_or_else(|| unreachable!());
-
-            Ok(Some(
-                NonZeroUsize::new(len).unwrap_or_else(|| unreachable!()),
-            ))
-        }
-
-        fn write_bytes(
-            &mut self,
-            _fd: &impl AsFd,
-            _buf: &[u8],
-        ) -> std::io::Result<Option<NonZeroUsize>> {
-            unreachable!()
-        }
-    }
+    use crate::{NonEmptyInlineString, message::Message};
 
     fn message(text: &str) -> Message {
         Message::new(NonEmptyInlineString::new(text).unwrap_or_else(|| unreachable!()))
@@ -116,11 +70,10 @@ mod tests {
         let buf = encoded(message);
         let (partial, rest) = buf.split_at(Message::BYTESIZE - 1);
         let (mut reader, res) = Reader::<{ Message::BYTESIZE }>::new_with_data(partial);
-        let mut stream = Stream { data: rest };
-        let fd = std::io::stdin();
-
         assert!(res.is_none());
-        match reader.read_from(&mut stream, &fd).unwrap() {
+        let (consumed, result) = reader.received(rest);
+        assert_eq!(consumed, rest.len());
+        match result {
             Some(data) => assert_eq!(data, buf),
             other => panic!("unexpected result: {other:?}"),
         }

@@ -18,6 +18,10 @@ impl<const N: usize> HttpLinesBuffer<N> {
         &mut self.buf[self.pos..]
     }
 
+    pub(crate) const fn len(&self) -> usize {
+        self.pos
+    }
+
     pub(crate) fn received(&mut self, len: NonZeroUsize) -> std::io::Result<()> {
         let newpos = self
             .pos
@@ -52,10 +56,6 @@ impl<const N: usize> HttpLinesBuffer<N> {
         self.buf.copy_within(len..self.pos, 0);
         self.pos = newpos;
         Ok(())
-    }
-
-    pub(crate) const fn leftover(&self) -> ([u8; N], usize) {
-        (self.buf, self.pos)
     }
 }
 
@@ -100,7 +100,7 @@ mod tests {
 
         assert_eq!(buffer.next_line(), None);
 
-        let (buf, len) = buffer.leftover();
-        assert_eq!(&buf[..len], b"ABC");
+        let HttpLinesBuffer { buf, pos } = buffer;
+        assert_eq!(&buf[..pos], b"ABC");
     }
 }

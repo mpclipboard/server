@@ -1,9 +1,11 @@
 use crate::{as_poll_fd::AsPollFd, reaper::CanBeReaped};
-use mpclipboard_shared::{
-    HandshakeRequest, HandshakeRequestReader, PlainByteStream, REvents, error, trace,
-};
+use mpclipboard_shared::{HandshakeRequest, HandshakeRequestReader, REvents, error, trace};
 use rustix::event::{PollFd, PollFlags};
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
+use rustix::io::Errno;
+use std::{
+    num::NonZeroUsize,
+    os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd},
+};
 
 pub struct PreSource {
     fd: OwnedFd,
@@ -43,17 +45,35 @@ impl PreSource {
         if revents.readable {
             trace!("{self} is readable");
 
-            match self.reader.read_from(&mut PlainByteStream, &self.fd) {
-                Ok(Some((req, _buf, len))) => {
-                    assert_eq!(len, 0);
+            let mut buf = [0; HandshakeRequest::BYTESIZE];
+            let len = match rustix::io::read(&self.fd, &mut buf).map(NonZeroUsize::new) {
+                Ok(Some(len)) => len,
+                Err(Errno::AGAIN) => return PreSourceResult::Pending(self),
+                Ok(None) => {
+                    error!("{self} reached EOF");
+                    return PreSourceResult::Died;
+                }
+                Err(errno) => {
+                    error!("{self} failed to read(): {errno:?}");
+                    return PreSourceResult::Died;
+                }
+            };
+
+            let data = buf
+                .get(..len.get())
+                .unwrap_or_else(|| unreachable!("read returned an oversized length"));
+
+            match self.reader.received(data) {
+                Ok((consumed, Some(req))) => {
+                    assert_eq!(consumed, len.get());
                     return PreSourceResult::Done((req, self.fd));
                 }
-                Ok(None) => {
+                Ok((_, None)) => {
                     self.last_activity_at = now;
                     return PreSourceResult::Pending(self);
                 }
                 Err(err) => {
-                    error!("{self} failed to read(): {err:?}");
+                    error!("{self} failed to decode handshake: {err:?}");
                     return PreSourceResult::Died;
                 }
             }

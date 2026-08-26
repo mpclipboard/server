@@ -53,13 +53,31 @@ impl Connected {
         now: u64,
         stream: &mut MaybeTlsStream,
     ) -> (ConnectionState, Option<Message>) {
-        match self.reader.read_from(stream, &self.fd) {
+        let mut buf = [0; Message::BYTESIZE];
+        let needed = self.reader.bytes_needed();
+        let readbuf = buf
+            .get_mut(..needed)
+            .unwrap_or_else(|| unreachable!("message reader requested an oversized buffer"));
+        match stream.read_bytes(&self.fd, readbuf) {
             Ok(None) => (self.into(), None),
             Err(err) => {
                 error!("failed to read({:?}): {err:?}", self.fd);
                 (self.disconnect(now), None)
             }
-            Ok(Some(message)) => (self.into(), Some(message)),
+            Ok(Some(len)) => {
+                let data = buf
+                    .get(..len.get())
+                    .unwrap_or_else(|| unreachable!("stream returned an oversized read"));
+                let (_, message) = self.reader.received(data);
+                match message {
+                    None => (self.into(), None),
+                    Some(Ok(message)) => (self.into(), Some(message)),
+                    Some(Err(err)) => {
+                        error!("failed to decode message: {err:?}");
+                        (self.disconnect(now), None)
+                    }
+                }
+            }
         }
     }
 
@@ -71,8 +89,15 @@ impl Connected {
             return self.disconnect(now);
         }
 
-        match self.writer.write_to(stream, &self.fd) {
-            Ok(()) => self.into(),
+        let Some(buf) = self.writer.remainder() else {
+            return self.into();
+        };
+        match stream.write_bytes(&self.fd, buf) {
+            Ok(Some(len)) => {
+                self.writer.written(len);
+                self.into()
+            }
+            Ok(None) => self.into(),
             Err(err) => {
                 error!("failed to write({:?}): {err:?}", self.fd);
                 self.disconnect(now)

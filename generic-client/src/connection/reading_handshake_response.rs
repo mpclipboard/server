@@ -53,8 +53,25 @@ impl ReadingHandshakeResponse {
         now: u64,
         stream: &mut MaybeTlsStream,
     ) -> (ConnectionState, Option<Message>) {
-        match self.reader.read_from(stream, &self.fd) {
-            Ok(Some(((), buf, len))) => {
+        let mut buf = [0; Message::BYTESIZE];
+        let len = match stream.read_bytes(&self.fd, &mut buf) {
+            Ok(Some(len)) => len.get(),
+            Ok(None) => {
+                trace!("handshake response still pending: {:?}", self.reader);
+                self.last_activity_at = now;
+                return (self.into(), None);
+            }
+            Err(err) => {
+                error!("failed to read() handshake response: {err:?}");
+                return (self.disconnect(now), None);
+            }
+        };
+
+        let data = buf
+            .get(..len)
+            .unwrap_or_else(|| unreachable!("stream returned an oversized read"));
+        match self.reader.received(data) {
+            Ok((consumed, Some(()))) => {
                 trace!("Handshake response matches");
 
                 if let Err(err) = enable_tcp_keep_alive(&self.fd) {
@@ -62,7 +79,7 @@ impl ReadingHandshakeResponse {
                     (self.disconnect(now), None)
                 } else {
                     let leftover = buf
-                        .get(..len)
+                        .get(consumed..len)
                         .unwrap_or_else(|| unreachable!("leftover buffer is malformed"));
                     warn!("Handshake leftover: {leftover:?}");
                     let (connected, message) = Connected::new(self.fd, leftover);
@@ -76,7 +93,7 @@ impl ReadingHandshakeResponse {
                     }
                 }
             }
-            Ok(None) => {
+            Ok((_, None)) => {
                 trace!("handshake response still pending: {:?}", self.reader);
                 self.last_activity_at = now;
                 (self.into(), None)

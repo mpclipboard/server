@@ -1,5 +1,5 @@
-use crate::{HandshakeRequest, byte_stream::ByteStream, writer::Writer};
-use std::os::fd::AsFd;
+use crate::{HandshakeRequest, writer::Writer};
+use core::num::NonZeroUsize;
 
 #[must_use]
 #[derive(Debug, Clone, Copy)]
@@ -14,11 +14,12 @@ impl HandshakeRequestWriter {
         }
     }
 
-    pub fn write_to(
-        &mut self,
-        stream: &mut impl ByteStream,
-        fd: &impl AsFd,
-    ) -> std::io::Result<bool> {
-        self.inner.write_to(stream, fd)
+    #[must_use]
+    pub fn remainder(&self) -> &[u8] {
+        self.inner.remainder()
+    }
+
+    pub fn written(&mut self, len: NonZeroUsize) -> bool {
+        self.inner.written(len)
     }
 }

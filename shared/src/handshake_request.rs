@@ -23,7 +23,7 @@ const BASE_HANDSHAKE_LENGTH: usize = START_LINE.len() + 2 // start line
     + 2; // headers end marker
 
 impl HandshakeRequest {
-    pub(crate) const BYTESIZE: usize = BASE_HANDSHAKE_LENGTH
+    pub const BYTESIZE: usize = BASE_HANDSHAKE_LENGTH
         + MAX_HOST_LENGTH
         + MAX_TOKEN_LENGTH
         + MAX_ID_LENGTH

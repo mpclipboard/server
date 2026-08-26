@@ -1,10 +1,9 @@
 use crate::{
-    ByteStream, CONNECTION_UPGRADE_HEADER, HOST_PREFIX, HandshakeRequest, Host, ID, ID_PREFIX,
-    START_LINE, TOKEN_PREFIX, Token, UPGRADE_MPCLIPBOARD_RAW_HEADER,
+    CONNECTION_UPGRADE_HEADER, HOST_PREFIX, HandshakeRequest, Host, ID, ID_PREFIX, START_LINE,
+    TOKEN_PREFIX, Token, UPGRADE_MPCLIPBOARD_RAW_HEADER,
     http_lines_reader::{HttpLinesParser, HttpLinesReader},
     strip_prefix_ignore_ascii_case,
 };
-use std::os::fd::AsFd;
 
 #[must_use]
 #[derive(Debug, Clone, Copy)]
@@ -90,12 +89,8 @@ impl HandshakeRequestReader {
         }
     }
 
-    pub fn read_from(
-        &mut self,
-        stream: &mut impl ByteStream,
-        fd: &impl AsFd,
-    ) -> std::io::Result<Option<(HandshakeRequest, [u8; HandshakeRequest::BYTESIZE], usize)>> {
-        self.inner.read_from(stream, fd)
+    pub fn received(&mut self, data: &[u8]) -> std::io::Result<(usize, Option<HandshakeRequest>)> {
+        self.inner.received(data)
     }
 }
 

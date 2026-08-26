@@ -1,6 +1,8 @@
 use crate::{as_poll_fd::AsPollFd, reaper::CanBeReaped};
-use mpclipboard_shared::{HandshakeResponseWriter, ID, PlainByteStream, REvents, error, trace};
+use core::num::NonZeroUsize;
+use mpclipboard_shared::{HandshakeResponseWriter, ID, REvents, error, trace};
 use rustix::event::{PollFd, PollFlags};
+use rustix::io::Errno;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 
 pub struct PreSink {
@@ -42,16 +44,24 @@ impl PreSink {
         if revents.writable {
             trace!("{self} is writable");
 
-            match self.writer.write_to(&mut PlainByteStream, &self.fd) {
-                Ok(true) => {
-                    return PreSinkResult::Done((self.id, self.fd));
-                }
-                Ok(false) => {
+            match rustix::io::write(&self.fd, self.writer.remainder()).map(NonZeroUsize::new) {
+                Ok(Some(len)) => {
+                    if self.writer.written(len) {
+                        return PreSinkResult::Done((self.id, self.fd));
+                    }
                     self.last_activity_at = now;
                     return PreSinkResult::Pending(self);
                 }
-                Err(err) => {
-                    error!("{self} failed to write(): {err:?}");
+                Err(Errno::AGAIN) => {
+                    self.last_activity_at = now;
+                    return PreSinkResult::Pending(self);
+                }
+                Ok(None) => {
+                    error!("write() returned zero for {self}");
+                    return PreSinkResult::Died;
+                }
+                Err(errno) => {
+                    error!("{self} failed to write(): {errno:?}");
                     return PreSinkResult::Died;
                 }
             }

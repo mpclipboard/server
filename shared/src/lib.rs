@@ -26,9 +26,6 @@ mod http_lines_reader;
 mod reader;
 mod writer;
 
-mod byte_stream;
-pub use byte_stream::{ByteStream, PlainByteStream};
-
 mod handshake_request;
 pub use handshake_request::HandshakeRequest;
 

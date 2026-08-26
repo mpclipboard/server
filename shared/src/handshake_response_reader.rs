@@ -1,11 +1,9 @@
 use crate::{
     CONNECTION_UPGRADE_HEADER, UPGRADE_MPCLIPBOARD_RAW_HEADER,
-    byte_stream::ByteStream,
     http_lines_reader::{HttpLinesParser, HttpLinesReader},
     message::Message,
     strip_prefix_ignore_ascii_case,
 };
-use std::os::fd::AsFd;
 
 #[must_use]
 #[derive(Debug, Clone, Copy)]
@@ -62,17 +60,58 @@ impl HandshakeResponseReader {
         }
     }
 
-    pub fn read_from(
-        &mut self,
-        stream: &mut impl ByteStream,
-        fd: &impl AsFd,
-    ) -> std::io::Result<Option<((), [u8; Message::BYTESIZE], usize)>> {
-        self.inner.read_from(stream, fd)
+    pub fn received(&mut self, data: &[u8]) -> std::io::Result<(usize, Option<()>)> {
+        self.inner.received(data)
     }
 }
 
 impl Default for HandshakeResponseReader {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::handshake_response::HandshakeResponse;
+
+    #[test]
+    fn fragmented_response_is_decoded() {
+        let mut reader = HandshakeResponseReader::new();
+
+        for (index, byte) in HandshakeResponse::BYTES.iter().enumerate() {
+            let (consumed, output) = reader.received(core::slice::from_ref(byte)).unwrap();
+            assert_eq!(consumed, 1);
+            assert_eq!(output.is_some(), index + 1 == HandshakeResponse::BYTESIZE);
+        }
+    }
+
+    #[test]
+    fn bytes_after_response_are_left_for_the_caller() {
+        let mut data = Vec::from(HandshakeResponse::BYTES);
+        data.extend_from_slice(b"raw protocol bytes");
+        let mut reader = HandshakeResponseReader::new();
+
+        let (consumed, output) = reader.received(&data).unwrap();
+
+        assert!(output.is_some());
+        assert_eq!(consumed, HandshakeResponse::BYTESIZE);
+        assert_eq!(&data[consumed..], b"raw protocol bytes");
+    }
+
+    #[test]
+    fn oversized_incomplete_response_is_rejected() {
+        let response_without_end = HandshakeResponse::BYTES
+            .strip_suffix(b"\r\n")
+            .unwrap_or_else(|| unreachable!());
+        let mut data = Vec::from(response_without_end);
+        while data.len() <= Message::BYTESIZE {
+            data.extend_from_slice(b"X: y\r\n");
+        }
+        data.extend_from_slice(b"\r\n");
+        let mut reader = HandshakeResponseReader::new();
+
+        assert!(reader.received(&data).is_err());
     }
 }

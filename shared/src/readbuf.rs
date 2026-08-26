@@ -28,11 +28,22 @@ impl<const N: usize> Readbuf<N> {
         }
     }
 
-    pub(crate) fn remainder(&mut self) -> &mut [u8] {
-        &mut self.buf[self.pos..]
-    }
-
-    pub(crate) fn received(&mut self, n: NonZeroUsize) -> Option<[u8; N]> {
+    pub(crate) fn received(&mut self, data: &[u8]) -> (usize, Option<[u8; N]>) {
+        let remaining = self.remaining();
+        let len = data.len().min(remaining);
+        let end = self
+            .pos
+            .checked_add(len)
+            .unwrap_or_else(|| unreachable!("read position overflow"));
+        self.buf
+            .get_mut(self.pos..end)
+            .unwrap_or_else(|| unreachable!("read range exceeds buffer"))
+            .copy_from_slice(
+                data.get(..len)
+                    .unwrap_or_else(|| unreachable!("read range exceeds input")),
+            );
+        let n = NonZeroUsize::new(len);
+        let Some(n) = n else { return (0, None) };
         self.pos = self
             .pos
             .checked_add(n.get())
@@ -46,10 +57,15 @@ impl<const N: usize> Readbuf<N> {
             self.pos = 0;
             self.buf.fill(0);
 
-            Some(buf)
+            (len, Some(buf))
         } else {
-            None
+            (len, None)
         }
+    }
+
+    pub(crate) fn remaining(&self) -> usize {
+        N.checked_sub(self.pos)
+            .unwrap_or_else(|| unreachable!("malformed Readbuf pos"))
     }
 }
 

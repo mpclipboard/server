@@ -1,9 +1,11 @@
 use crate::as_poll_fd::AsPollFd;
-use mpclipboard_shared::{
-    ID, Message, MessageReader, MessageWriter, PlainByteStream, REvents, error, trace,
-};
+use mpclipboard_shared::{ID, Message, MessageReader, MessageWriter, REvents, error, trace};
 use rustix::event::{PollFd, PollFlags};
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
+use rustix::io::Errno;
+use std::{
+    num::NonZeroUsize,
+    os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd},
+};
 
 pub struct Client {
     fd: OwnedFd,
@@ -45,10 +47,18 @@ impl Client {
         if revents.writable {
             trace!("{self} is writable");
 
-            match self.writer.write_to(&mut PlainByteStream, &self.fd) {
-                Ok(()) => {}
-                Err(err) => {
-                    error!("failed to write() for {self}: {err:?}");
+            let Some(buf) = self.writer.remainder() else {
+                unreachable!("empty writer was not polled")
+            };
+            match rustix::io::write(&self.fd, buf).map(NonZeroUsize::new) {
+                Ok(Some(len)) => self.writer.written(len),
+                Err(Errno::AGAIN) => {}
+                Ok(None) => {
+                    error!("write() returned zero for {self}");
+                    return ClientResult::Died;
+                }
+                Err(errno) => {
+                    error!("failed to write() for {self}: {errno:?}");
                     return ClientResult::Died;
                 }
             }
@@ -57,13 +67,36 @@ impl Client {
         if revents.readable {
             trace!("{self} is readable");
 
-            match self.reader.read_from(&mut PlainByteStream, &self.fd) {
-                Ok(None) => {}
-                Err(err) => {
-                    error!("failed to read() for {self}: {err:?}");
+            let mut buf = [0; Message::BYTESIZE];
+            let needed = self.reader.bytes_needed();
+            let readbuf = buf
+                .get_mut(..needed)
+                .unwrap_or_else(|| unreachable!("message reader requested an oversized buffer"));
+            let len = match rustix::io::read(&self.fd, readbuf).map(NonZeroUsize::new) {
+                Ok(Some(len)) => len,
+                Err(Errno::AGAIN) => return ClientResult::Pending(self),
+                Ok(None) => {
+                    error!("{self} reached EOF");
                     return ClientResult::Died;
                 }
-                Ok(Some(message)) => return ClientResult::Message((message, self)),
+                Err(errno) => {
+                    error!("failed to read() for {self}: {errno:?}");
+                    return ClientResult::Died;
+                }
+            };
+
+            let data = buf
+                .get(..len.get())
+                .unwrap_or_else(|| unreachable!("read returned an oversized length"));
+            let (_, message) = self.reader.received(data);
+
+            match message {
+                Some(Ok(message)) => return ClientResult::Message((message, self)),
+                None => {}
+                Some(Err(err)) => {
+                    error!("failed to decode message for {self}: {err:?}");
+                    return ClientResult::Died;
+                }
             }
         }
 

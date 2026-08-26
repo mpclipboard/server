@@ -1,5 +1,5 @@
-use crate::{byte_stream::ByteStream, writebuf::Writebuf};
-use std::os::fd::AsFd;
+use crate::writebuf::Writebuf;
+use core::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Writer<const N: usize> {
@@ -13,20 +13,11 @@ impl<const N: usize> Writer<N> {
         }
     }
 
-    pub(crate) fn write_to(
-        &mut self,
-        stream: &mut impl ByteStream,
-        fd: &impl AsFd,
-    ) -> std::io::Result<bool> {
-        loop {
-            match stream.write_bytes(fd, self.writebuf.remainder())? {
-                Some(len) => {
-                    if self.writebuf.written(len) {
-                        return Ok(true);
-                    }
-                }
-                None => return Ok(false),
-            }
-        }
+    pub(crate) fn remainder(&self) -> &[u8] {
+        self.writebuf.remainder()
+    }
+
+    pub(crate) fn written(&mut self, len: NonZeroUsize) -> bool {
+        self.writebuf.written(len)
     }
 }

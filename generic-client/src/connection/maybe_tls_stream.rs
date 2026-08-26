@@ -1,6 +1,6 @@
 use crate::tls::TLS;
 use anyhow::{Context, Result};
-use mpclipboard_shared::{ByteStream, PlainByteStream, Url, Wants, error};
+use mpclipboard_shared::{Url, Wants, error};
 use rustls::{ClientConnection, pki_types::ServerName};
 use std::{
     io::{ErrorKind, Read, Write},
@@ -106,17 +106,20 @@ impl MaybeTlsStream {
             },
         }
     }
-}
 
-impl ByteStream for MaybeTlsStream {
-    fn read_bytes(
+    pub(crate) fn read_bytes(
         &mut self,
         fd: &impl AsFd,
         buf: &mut [u8],
     ) -> std::io::Result<Option<NonZeroUsize>> {
         match self {
             Self::Empty => unreachable!("empty stream cannot read"),
-            Self::Plain => PlainByteStream.read_bytes(fd, buf),
+            Self::Plain => match rustix::io::read(fd, buf).map(NonZeroUsize::new) {
+                Ok(Some(len)) => Ok(Some(len)),
+                Ok(None) => Err(std::io::Error::new(ErrorKind::UnexpectedEof, "EOF")),
+                Err(rustix::io::Errno::AGAIN) => Ok(None),
+                Err(errno) => Err(errno.into()),
+            },
             Self::Tls(conn) => {
                 match conn.complete_io(&mut StdReadWriteFd(fd)) {
                     Ok(_) => {}
@@ -134,10 +137,19 @@ impl ByteStream for MaybeTlsStream {
         }
     }
 
-    fn write_bytes(&mut self, fd: &impl AsFd, buf: &[u8]) -> std::io::Result<Option<NonZeroUsize>> {
+    pub(crate) fn write_bytes(
+        &mut self,
+        fd: &impl AsFd,
+        buf: &[u8],
+    ) -> std::io::Result<Option<NonZeroUsize>> {
         match self {
             Self::Empty => unreachable!("empty stream cannot write"),
-            Self::Plain => PlainByteStream.write_bytes(fd, buf),
+            Self::Plain => match rustix::io::write(fd, buf).map(NonZeroUsize::new) {
+                Ok(Some(len)) => Ok(Some(len)),
+                Ok(None) => Err(std::io::Error::new(ErrorKind::UnexpectedEof, "EOF")),
+                Err(rustix::io::Errno::AGAIN) => Ok(None),
+                Err(errno) => Err(errno.into()),
+            },
             Self::Tls(conn) => {
                 let len = match conn.writer().write(buf).map(NonZeroUsize::new) {
                     Ok(Some(len)) => len,

@@ -1,5 +1,5 @@
-use crate::{byte_stream::ByteStream, http_lines_buffer::HttpLinesBuffer};
-use std::os::fd::AsFd;
+use crate::http_lines_buffer::HttpLinesBuffer;
+use core::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Copy)]
 pub struct HttpLinesReader<P, const N: usize>
@@ -23,47 +23,53 @@ where
         }
     }
 
-    #[expect(clippy::type_complexity)]
-    pub(crate) fn read_from(
-        &mut self,
-        stream: &mut impl ByteStream,
-        fd: &impl AsFd,
-    ) -> std::io::Result<Option<(P::Output, [u8; N], usize)>> {
-        loop {
-            match stream.read_bytes(fd, self.buf.remainder())? {
-                Some(len) => {
-                    self.buf.received(len)?;
+    pub(crate) fn received(&mut self, data: &[u8]) -> std::io::Result<(usize, Option<P::Output>)> {
+        let received = {
+            let remainder = self.buf.remainder();
+            let len = remainder.len().min(data.len());
+            remainder
+                .get_mut(..len)
+                .unwrap_or_else(|| unreachable!("write range exceeds HTTP buffer"))
+                .copy_from_slice(
+                    data.get(..len)
+                        .unwrap_or_else(|| unreachable!("write range exceeds input")),
+                );
+            if let Some(len) = NonZeroUsize::new(len) {
+                self.buf.received(len)?;
+            }
 
-                    while let Some(line) = self.buf.next_line()
-                        && !self.seen_end
-                    {
-                        let line = match core::str::from_utf8(line) {
-                            Ok(line) => line,
-                            Err(err) => {
-                                return Err(std::io::Error::other(format!(
-                                    "non-utf8 handshake line: {err:?}"
-                                )));
-                            }
-                        };
+            len
+        };
 
-                        if line == "\r\n" {
-                            self.seen_end = true;
-                        } else {
-                            self.parser.line_received(line)?;
-                        }
-                        self.buf.consumed(line.len())?;
+        while let Some(line) = self.buf.next_line() {
+            let line = core::str::from_utf8(line).map_err(|err| {
+                std::io::Error::other(format!("non-utf8 handshake line: {err:?}"))
+            })?;
 
-                        if self.seen_end
-                            && let Some(output) = self.parser.try_finish()
-                        {
-                            let (buf, len) = self.buf.leftover();
-                            return Ok(Some((output, buf, len)));
-                        }
-                    }
-                }
-                None => return Ok(None),
+            if line == "\r\n" {
+                self.seen_end = true;
+            } else {
+                self.parser.line_received(line)?;
+            }
+            self.buf.consumed(line.len())?;
+
+            if self.seen_end {
+                let output = self
+                    .parser
+                    .try_finish()
+                    .ok_or_else(|| std::io::Error::other("incomplete HTTP upgrade handshake"))?;
+                let consumed = received
+                    .checked_sub(self.buf.len())
+                    .unwrap_or_else(|| unreachable!("HTTP leftover exceeds received input"));
+                return Ok((consumed, Some(output)));
             }
         }
+
+        if received != data.len() || self.buf.remainder().is_empty() {
+            return Err(std::io::Error::other("HTTP handshake exceeds buffer"));
+        }
+
+        Ok((received, None))
     }
 }
 

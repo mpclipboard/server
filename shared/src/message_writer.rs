@@ -1,6 +1,5 @@
-use crate::{byte_stream::ByteStream, message::Message, writebuf::Writebuf};
+use crate::{message::Message, writebuf::Writebuf};
 use core::num::NonZeroUsize;
-use std::os::fd::AsFd;
 
 #[must_use]
 #[expect(clippy::large_enum_variant)]
@@ -20,14 +19,14 @@ impl MessageWriter {
     }
 
     #[must_use]
-    fn buf_to_write(&self) -> Option<&[u8]> {
+    pub fn remainder(&self) -> Option<&[u8]> {
         match self {
             Self::Empty => None,
             Self::Some { current, .. } => Some(current.remainder()),
         }
     }
 
-    fn written(&mut self, n: NonZeroUsize) {
+    pub fn written(&mut self, n: NonZeroUsize) {
         match self {
             Self::Empty => unreachable!("empty buffer never wants to write"),
 
@@ -57,24 +56,9 @@ impl MessageWriter {
         }
     }
 
-    pub fn write_to(
-        &mut self,
-        stream: &mut impl ByteStream,
-        fd: &impl AsFd,
-    ) -> std::io::Result<()> {
-        while let Some(buf) = self.buf_to_write() {
-            match stream.write_bytes(fd, buf)? {
-                Some(len) => self.written(len),
-                None => return Ok(()),
-            }
-        }
-
-        Ok(())
-    }
-
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.buf_to_write().is_none()
+        self.remainder().is_none()
     }
 }
 

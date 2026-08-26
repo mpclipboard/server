@@ -57,9 +57,16 @@ impl WritingHandshakeRequest {
         _config: &Config,
         stream: &mut MaybeTlsStream,
     ) -> ConnectionState {
-        match self.writer.write_to(stream, &self.fd) {
-            Ok(true) => ReadingHandshakeResponse::new(self.fd, now).into(),
-            Ok(false) => {
+        match stream.write_bytes(&self.fd, self.writer.remainder()) {
+            Ok(Some(len)) => {
+                if self.writer.written(len) {
+                    ReadingHandshakeResponse::new(self.fd, now).into()
+                } else {
+                    self.last_activity_at = now;
+                    self.into()
+                }
+            }
+            Ok(None) => {
                 self.last_activity_at = now;
                 self.into()
             }
