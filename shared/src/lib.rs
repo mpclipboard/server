@@ -20,12 +20,15 @@ mod config;
 pub use config::{ConfigParser, ConfigParserError};
 
 mod http_lines_buffer;
-mod readbuf;
-mod writebuf;
-
 mod http_lines_reader;
+
+mod readbuf;
 mod reader;
+
+mod writebuf;
 mod writer;
+
+mod array_writer;
 
 mod handshake_request;
 pub use handshake_request::HandshakeRequest;
@@ -98,7 +101,7 @@ mod tcp_keep_alive;
 pub use tcp_keep_alive::enable_tcp_keep_alive;
 
 mod url;
-pub use url::Url;
+pub use url::{Url, UrlError};
 
 pub(crate) fn strip_prefix_ignore_ascii_case<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
     let (pre, post) = line.split_at_checked(prefix.len())?;

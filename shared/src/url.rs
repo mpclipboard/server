@@ -1,5 +1,8 @@
-use crate::{Host, NonEmptyInlineString};
-use core::net::{SocketAddr, SocketAddrV4};
+use crate::{Host, NonEmptyInlineString, array_writer::ArrayWriter};
+use core::{
+    fmt::Write,
+    net::{SocketAddr, SocketAddrV4},
+};
 use std::net::ToSocketAddrs;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,27 +13,29 @@ pub struct Url {
     header: Host,
 }
 
+impl core::error::Error for UrlError {}
+
 impl Url {
-    pub fn parse(url: &str) -> std::io::Result<Self> {
+    pub fn parse(url: &str) -> Result<Self, UrlError> {
         let (scheme, url) = url
             .split_once("://")
-            .ok_or_else(|| std::io::Error::other("no :// separator in the URL"))?;
-        let (host, port) = url
-            .rsplit_once(':')
-            .ok_or_else(|| std::io::Error::other("no : separator between host and port"))?;
+            .ok_or(UrlError::MissingSchemeSeparator)?;
+        let (host, port) = url.rsplit_once(':').ok_or(UrlError::MissingPortSeparator)?;
 
         let tls = match scheme {
             "http" => false,
             "https" => true,
-            _ => return Err(std::io::Error::other("unknown URL scheme")),
+            _ => return Err(UrlError::UnknownScheme),
         };
-        let host = NonEmptyInlineString::new(host)
-            .ok_or_else(|| std::io::Error::other("host is empty or too long"))?;
-        let port = port
-            .parse::<u16>()
-            .map_err(|_| std::io::Error::other("invalid port"))?;
+        let host = NonEmptyInlineString::new(host).ok_or(UrlError::InvalidHost)?;
+        let port = port.parse::<u16>().map_err(|_| UrlError::InvalidPort)?;
 
-        let header = NonEmptyInlineString::new(&format!("{}:{port}", host.as_str()))
+        let mut buf = [0; crate::MAX_HOST_LENGTH];
+        let mut writer = ArrayWriter::new(&mut buf);
+        write!(writer, "{}:{port}", host.as_str()).unwrap_or_else(|_| unreachable!());
+        let header = core::str::from_utf8(writer.as_bytes())
+            .ok()
+            .and_then(NonEmptyInlineString::new)
             .unwrap_or_else(|| unreachable!());
 
         Ok(Self {
@@ -41,17 +46,17 @@ impl Url {
         })
     }
 
-    pub fn resolve(&self) -> std::io::Result<SocketAddrV4> {
+    pub fn resolve(&self) -> Result<SocketAddrV4, UrlError> {
         let mut addrs = (self.host.as_str(), self.port)
             .to_socket_addrs()
-            .map_err(|err| std::io::Error::other(format!("failed to resolve URL: {err:?}")))?;
+            .map_err(|_| UrlError::ResolveFailed)?;
 
         addrs
             .find_map(|addr| match addr {
                 SocketAddr::V4(v4) => Some(v4),
                 SocketAddr::V6(_) => None,
             })
-            .ok_or_else(|| std::io::Error::other("can't resolve URL to IPv4 address"))
+            .ok_or(UrlError::NoIpv4Address)
     }
 
     #[must_use]
@@ -66,6 +71,31 @@ impl Url {
 
     pub const fn header(&self) -> Host {
         self.header
+    }
+}
+
+#[derive(Debug)]
+pub enum UrlError {
+    MissingSchemeSeparator,
+    MissingPortSeparator,
+    UnknownScheme,
+    InvalidHost,
+    InvalidPort,
+    ResolveFailed,
+    NoIpv4Address,
+}
+
+impl core::fmt::Display for UrlError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::MissingSchemeSeparator => f.write_str("no :// separator in the URL"),
+            Self::MissingPortSeparator => f.write_str("no : separator between host and port"),
+            Self::UnknownScheme => f.write_str("unknown URL scheme"),
+            Self::InvalidHost => f.write_str("host is empty or too long"),
+            Self::InvalidPort => f.write_str("invalid port"),
+            Self::ResolveFailed => f.write_str("failed to resolve URL"),
+            Self::NoIpv4Address => f.write_str("can't resolve URL to IPv4 address"),
+        }
     }
 }
 
