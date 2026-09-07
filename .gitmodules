@@ -1,3 +1,7 @@
 [submodule "rustls-platform-verifier"]
 	path = rustls-platform-verifier
 	url = https://github.com/rustls/rustls-platform-verifier.git
+
+[submodule "florisboard"]
+	path = florisboard
+	url = https://github.com/florisboard/florisboard.git

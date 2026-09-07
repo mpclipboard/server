@@ -1,0 +1,106 @@
+[task_config]
+shell = "bash -c"
+
+[tools]
+java = "17.0.2"
+gradle = ["9.2.0", "7.5.1"]
+android-sdk = "17.0"
+
+[env]
+RUSTLS_PLATFORM_VERIFIER_VERSION = "v/0.7.0"
+FLORISBOARD_VERSION = "v0.5.2"
+GRADLE_USER_HOME = "{{config_root}}/.cache/gradle"
+ANDROID_USER_HOME = "{{config_root}}/.cache/android"
+
+[tasks."setup:rust-target"]
+run = "rustup target add aarch64-linux-android"
+description = "Adds rustup target"
+
+[tasks."setup:cargo-ndk"]
+run = """
+    if ! command -v cargo-binstall > /dev/null 2>&1; then
+        cargo install cargo-binstall --locked
+    fi
+
+    if ! command -v cargo-ndk >/dev/null 2>&1; then
+        cargo binstall --no-confirm cargo-ndk
+    fi
+"""
+description = "Installs cargo-ndk"
+
+[tasks."setup:android-sdk"]
+run = """
+    yes | sdkmanager --licenses >/dev/null
+    sdkmanager \
+        "platform-tools" \
+        "platforms;android-33" \
+        "platforms;android-35" \
+        "platforms;android-36" \
+        "build-tools;30.0.3" \
+        "build-tools;35.0.0" \
+        "ndk;26.1.10909125" \
+        "ndk;27.0.12077973" \
+        "cmake;3.22.1" \
+        "cmake;4.0.2"
+"""
+description = "Installs Android SDK"
+
+[tasks."build:rustls-platform-verifier"]
+tools = { gradle = "7.5.1" }
+run = """
+    pushd rustls-platform-verifier
+        git reset --hard "$RUSTLS_PLATFORM_VERIFIER_VERSION"
+        git apply ../rustls-platform-verifier-patches/prefer-crls-on-android.patch
+        gradle --no-daemon -p android :rustls-platform-verifier:assembleRelease
+        git reset --hard "$RUSTLS_PLATFORM_VERIFIER_VERSION"
+    popd
+
+    ls -l rustls-platform-verifier/android/rustls-platform-verifier/build/outputs/aar/rustls-platform-verifier-release.aar
+"""
+
+[tasks."build:mpclipboard-generic-client"]
+depends = ["setup:rust-target", "setup:cargo-ndk"]
+run = """
+    pushd generic-client
+        cargo ndk -t arm64-v8a build --release
+    popd
+
+    ls -l generic-client/target/aarch64-linux-android/release/libmpclipboard_generic_client.a generic-client/bindings.h
+"""
+
+[tasks."build:mpclipboard-android"]
+tools = { gradle = "9.2.0" }
+depends = ["build:rustls-platform-verifier", "build:mpclipboard-generic-client"]
+run = """
+    pushd android
+        gradle --no-daemon assembleRelease
+    popd
+
+    ls -l android/build/outputs/aar/mpclipboard-release.aar
+"""
+
+[tasks."build:florisboard"]
+tools = { gradle = "9.2.0" }
+depends = ["build:mpclipboard-android", "build:rustls-platform-verifier"]
+usage = """
+arg "<android-keystore-path>" help="Path to Android keystore file for signing"
+"""
+raw = true
+run = """
+    read -s -p "Keystore password: " KEYSTORE_PASSWORD
+    echo
+
+    export ANDROID_KEYSTORE_PATH="$usage_android_keystore_path"
+    export ANDROID_KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD"
+    export ANDROID_KEY_ALIAS="release"
+    export ANDROID_KEY_PASSWORD="$KEYSTORE_PASSWORD"
+
+    pushd florisboard
+        git reset --hard "$FLORISBOARD_VERSION"
+        git apply ../florisboard-patches/integrate-mpclipboard.patch
+        gradle --no-daemon :app:assembleRelease
+        git reset --hard "$FLORISBOARD_VERSION"
+    popd
+
+    ls -l florisboard/app/build/outputs/apk/release/app-release.apk
+"""

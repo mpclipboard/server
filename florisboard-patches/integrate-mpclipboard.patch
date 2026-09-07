@@ -45,8 +45,8 @@ index 34c4cbd..3dbced9 100644
      implementation(libs.patrickgold.jetpref.datastore.ui)
      implementation(libs.patrickgold.jetpref.material.ui)
 +    implementation("androidx.datastore:datastore-preferences:1.1.7")
-+    implementation(files("../../mpclipboard.aar"))
-+    implementation(files("../../rustls-platform-verifier.aar"))
++    implementation(files("../../android/build/outputs/aar/mpclipboard-release.aar"))
++    implementation(files("../../rustls-platform-verifier/android/rustls-platform-verifier/build/outputs/aar/rustls-platform-verifier-release.aar"))
 
      implementation(projects.lib.android)
      implementation(projects.lib.color)
