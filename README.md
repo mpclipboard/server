@@ -15,7 +15,7 @@ Key components:
 + [Linux client](/linux) - integrates with Wayland clipboard, shows history in tray menu.
 + [macOS client](/macos) - integrates with macOS clipboard, shows history in tray menu, displays system notification when there's a new text received from the server.
 + [Android library](/android) - a generic library for Android (Kotlin wrapper around Rust library)
-+ [Patched FlorisBoard](/florisboard) - a patched version of a popular [open-source custom IME app for Android called FlorisBoard](https://github.com/florisboard/florisboard).
++ [Patched FlorisBoard](/florisboard-patches) - a patched version of a popular [open-source custom IME app for Android called FlorisBoard](https://github.com/florisboard/florisboard).
 
 And potentially any other client can be implemented as well (iOS, Windows, etc).
 

@@ -57,6 +57,7 @@ run = """
 
     ls -l rustls-platform-verifier/android/rustls-platform-verifier/build/outputs/aar/rustls-platform-verifier-release.aar
 """
+description = "Builds patched rustls-platform-verifier"
 
 [tasks."build:mpclipboard-generic-client"]
 depends = ["setup:rust-target", "setup:cargo-ndk"]
@@ -67,6 +68,7 @@ run = """
 
     ls -l generic-client/target/aarch64-linux-android/release/libmpclipboard_generic_client.a generic-client/bindings.h
 """
+description = "Builds Rust part of MPClipboard"
 
 [tasks."build:mpclipboard-android"]
 tools = { gradle = "9.2.0" }
@@ -78,6 +80,7 @@ run = """
 
     ls -l android/build/outputs/aar/mpclipboard-release.aar
 """
+description = "Builds Kotlin wrapper of MPClipboard"
 
 [tasks."build:florisboard"]
 tools = { gradle = "9.2.0" }
@@ -104,3 +107,16 @@ run = """
 
     ls -l florisboard/app/build/outputs/apk/release/app-release.apk
 """
+description = "Builds patched Florisboard"
+
+[tasks."build:android-cli"]
+tools = { gradle = "9.2.0" }
+depends = ["build:mpclipboard-android", "build:rustls-platform-verifier"]
+run = """
+    pushd android/cli
+        gradle --no-daemon -p .. :cli:assembleDebug
+    popd
+
+    ls -l android/cli/build/outputs/apk/debug/cli-debug.apk
+"""
+description = "Builds a tiny CLI Android app for testing"

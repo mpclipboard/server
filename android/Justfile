@@ -1,12 +1,1 @@
 mod cli 'cli/Justfile'
-
-clean:
-    rm -rf .cxx .gradle .kotlin build *.aar
-
-release out:
-    ./gradlew --no-daemon assembleRelease
-    cp build/outputs/aar/mpclipboard-release.aar {{out}}
-
-debug out:
-    ./gradlew --no-daemon assembleDebug
-    cp build/outputs/aar/mpclipboard-debug.aar {{out}}

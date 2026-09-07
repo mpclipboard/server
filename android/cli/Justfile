@@ -2,7 +2,7 @@ apk := 'build/outputs/apk/debug/cli-debug.apk'
 package := 'dev.mpclipboard.android.cli'
 
 build:
-    ../gradlew -p .. :cli:assembleDebug
+    mise build:android-cli
 
 install:
     adb install -r {{apk}}
