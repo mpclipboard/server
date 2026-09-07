@@ -8,3 +8,4 @@ Cargo.lock
 .cxx
 local.properties
 build
+.cache
